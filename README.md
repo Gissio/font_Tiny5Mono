@@ -1,4 +1,4 @@
-![Tiny5 Mono variable axes](documentation/tiny5mono-axes.gif)
+![Tiny5 Mono variable axes](documentation/tiny5mono-presentation.jpg)
 
 # Tiny5 Mono
 
