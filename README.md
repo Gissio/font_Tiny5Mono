@@ -19,7 +19,7 @@ Tiny5 Mono excels at evoking retro-futurism, constrained-tech nostalgia and clea
 
 It shares the broad language support of Tiny5, covering **Latin, Greek, Cyrillic and Armenian scripts** across **974 languages**, and adds complete sets of **box-drawing characters and block elements**, plus the sextants and much of **Symbols for Legacy Computing**, for a total of **2,287 glyphs**.
 
-For crisp rows of pixels, set the font size to **increments of 6 pt (8 px)**. To make the pixels square, set the Width axis to **144**.
+For crisp rows of pixels, set the font size to **increments of 6 pt (8 px)**. To make the pixels square, set the Width axis to **143.82**.
 
 Tiny5 Mono is also available in [BDF](https://en.wikipedia.org/wiki/Glyph_Bitmap_Distribution_Format) format for seamless integration with the [mcu-renderer](https://github.com/Gissio/mcu-renderer), [u8g2](https://github.com/olikraus/u8g2) and [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI) libraries.
 
