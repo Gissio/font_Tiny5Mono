@@ -5,7 +5,7 @@
 #
 # Glyphs are ordered for finding, not by code point: letters by script and
 # case, each base letter followed by its variants (accented, stroked, turned,
-# ...), then numbers, punctuation and the symbol groups.
+# ...), then marks, numbers, symbols and text-mode graphics.
 import argparse
 import json
 import os
@@ -22,12 +22,15 @@ except ImportError:
 
 AXIS_ORDER = ["wght", "wdth", "ital", "ROND", "BLED", "JITT"]
 
-SCRIPTS = [
-    ("Latn", "Latin"),
-    ("Grek", "Greek"),
-    ("Cyrl", "Cyrillic"),
-    ("Armn", "Armenian"),
-]
+# Room around the widest glyph in a box of the page, in em
+BOX_AIR = 0.25
+
+SCRIPT_NAMES = {
+    "Latn": "Latin",
+    "Grek": "Greek",
+    "Cyrl": "Cyrillic",
+    "Armn": "Armenian",
+}
 
 # First letter and last letter of each script's basic alphabet: base letters in
 # these ranges come first, in code point order.
@@ -86,22 +89,26 @@ POWERLINE_NAMES = {
 SECTIONS = (
     [
         f"{script_name} {kind}"
-        for _, script_name in SCRIPTS
+        for script_name in SCRIPT_NAMES.values()
         for kind in ("uppercase", "lowercase", "small capitals", "other")
     ]
     + [
-        "Numbers",
+        # Marks, from standalone to attached
         "Punctuation",
         "Modifier letters",
         "Combining marks",
-        # Symbols used in text
-        "Currency",
+        # Numbers and what goes with them
+        "Numbers",
         "Math",
+        "Currency",
+        # Symbols used in text: each shares shapes with the next, and the
+        # technical symbols (scan lines, corners, control pictures) lead into
+        # the graphics
         "Arrows",
         "Geometric shapes",
-        "Technical",
         "Enclosed",
         "Symbols",
+        "Technical",
         # Text-mode graphics
         "Box drawing",
         "Block elements",
@@ -159,6 +166,12 @@ def get_name(code):
     )
 
 
+def get_script(char):
+    """Returns the script code, with Coptic letters counted as Greek."""
+    script = fontunicodedata.script(char)
+    return "Grek" if script == "Copt" else script
+
+
 def get_base(char, script):
     """Returns the base letter and a sort key of the variant: the combining
     marks of the decomposition, or pseudo marks for variants found by name
@@ -197,11 +210,9 @@ def get_section(code):
     char = chr(code)
     category = unicodedata.category(char)
     block = fontunicodedata.block(char)
-    script = fontunicodedata.script(char)
-    if script == "Copt":
-        script = "Grek"
+    script = get_script(char)
     name = get_name(code)
-    script_name = dict(SCRIPTS).get(script)
+    script_name = SCRIPT_NAMES.get(script)
 
     if category[0] == "Z" or category == "Cf" or block == "Variation Selectors":
         return "Spaces and invisibles"
@@ -234,8 +245,11 @@ def get_section(code):
             r"\bARROW", name
         ):
             return "Arrows"
+        # Circled digits among the dingbats, with the other circled numbers
+        if block == "Dingbats" and re.search(r"CIRCLED.*\b(DIGIT|NUMBER)\b", name):
+            return "Enclosed"
         return section
-    if script_name and script in ("Cyrl", "Armn") and category[0] != "L":
+    if script in ("Cyrl", "Armn") and category[0] != "L":
         return f"{script_name} other"
     if category in ("Lm", "Sk"):
         return "Modifier letters"
@@ -264,12 +278,12 @@ def get_sort_key(code, section):
     char = chr(code)
     category = unicodedata.category(char)
     name = get_name(code)
-    if section.endswith(("uppercase", "lowercase", "small capitals")):
-        script = fontunicodedata.script(char)
-        if section.endswith("small capitals"):
-            # Group by the letter: LATIN LETTER SMALL CAPITAL L WITH STROKE -> L
-            letter = re.search(r"SMALL CAPITAL (?:LETTER )?(\S+)", name)[1]
-            return (letter,), (" WITH " in name, code)
+    if section.endswith("small capitals"):
+        # Group by the letter: LATIN LETTER SMALL CAPITAL L WITH STROKE -> L
+        letter = re.search(r"SMALL CAPITAL (?:LETTER )?(\S+)", name)[1]
+        return (letter,), (" WITH " in name, code)
+    if section.endswith(("uppercase", "lowercase")):
+        script = get_script(char)
         base, key = get_base(char, script)
         base_code = ord(base)
         core = any(
@@ -299,8 +313,55 @@ def get_sort_key(code, section):
     return (), (code,)
 
 
+def get_cell_metrics(fonts):
+    """Returns a family's cell metrics in em, from its roman and italic fonts:
+    the line, the highest and lowest ink, and the box width at the narrowest,
+    default and widest Width. A box has room for the widest ink, centered on
+    its advance. Advances scale with the Width; ink past the advance (italic
+    slant) is taken as fixed."""
+    roman = fonts[0]
+    units_per_em = roman["head"].unitsPerEm
+    ascent = roman["hhea"].ascent
+    descent = -roman["hhea"].descent
+    wdth = {axis.axisTag: axis for axis in roman["fvar"].axes}.get("wdth")
+    widths = [1, 1, 1]
+    if wdth:
+        widths = [wdth.minValue / wdth.defaultValue, 1, wdth.maxValue / wdth.defaultValue]
+
+    top = ascent
+    bottom = descent
+    boxes = [0, 0, 0]
+    for font in fonts:
+        glyf = font["glyf"]
+        for code, glyph_name in font.getBestCmap().items():
+            advance = font["hmtx"][glyph_name][0]
+            overhang = 0
+            glyph = glyf[glyph_name]
+            if glyph.numberOfContours:
+                glyph.recalcBounds(glyf)
+                top = max(top, glyph.yMax)
+                bottom = max(bottom, -glyph.yMin)
+                overhang = max(-glyph.xMin, glyph.xMax - advance, 0)
+            # Combining marks are shown on a dotted circle
+            if unicodedata.category(chr(code))[0] != "M":
+                boxes = [
+                    max(box, advance * width + 2 * overhang)
+                    for box, width in zip(boxes, widths)
+                ]
+
+    return {
+        "box": [round(box / units_per_em + BOX_AIR, 4) for box in boxes],
+        "ascent": ascent / units_per_em,
+        "descent": descent / units_per_em,
+        "top": top / units_per_em,
+        "bottom": bottom / units_per_em,
+    }
+
+
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description="Updates the glyph table of the glyph viewer page."
+    )
     parser.add_argument("html", help="the page to update")
     parser.add_argument(
         "--family",
@@ -322,26 +383,12 @@ def main():
     axes = {}
     cmaps = []
     for name, roman, italic in args.family:
-        font = TTFont(roman)
-        cmap = set(font.getBestCmap())
-        cmaps.append(cmap)
-        units_per_em = font["head"].unitsPerEm
-        glyf = font["glyf"]
-        advances = []
-        top = font["hhea"].ascent
-        bottom = font["hhea"].descent
-        for glyph_name in font.getBestCmap().values():
-            advances.append(font["hmtx"][glyph_name][0])
-            glyph = glyf[glyph_name]
-            if glyph.numberOfContours:
-                glyph.recalcBounds(glyf)
-                top = max(top, glyph.yMax)
-                bottom = min(bottom, glyph.yMin)
-        advances.sort()
-        for axis in font["fvar"].axes:
+        fonts = [TTFont(roman), TTFont(italic)]
+        cmaps.append(set(fonts[0].getBestCmap()))
+        for axis in fonts[0]["fvar"].axes:
             axes[axis.axisTag] = {
                 "tag": axis.axisTag,
-                "name": font["name"].getDebugName(axis.axisNameID),
+                "name": fonts[0]["name"].getDebugName(axis.axisNameID),
                 "min": axis.minValue,
                 "default": axis.defaultValue,
                 "max": axis.maxValue,
@@ -351,44 +398,38 @@ def main():
                 "name": name,
                 "roman": get_url(roman),
                 "italic": get_url(italic),
-                # Wide enough for 95% of the glyphs; the margin takes the rest
-                "advance": round(
-                    advances[int(len(advances) * 0.95)] / units_per_em, 4
-                ),
-                "widest": advances[-1] / units_per_em,
-                # Line and ink extents, so stacked accents fit the cell
-                "ascent": font["hhea"].ascent / units_per_em,
-                "descent": -font["hhea"].descent / units_per_em,
-                "top": top / units_per_em,
-                "bottom": -bottom / units_per_em,
+                **get_cell_metrics(fonts),
             }
         )
+    # The italics are separate fonts
     axes["ital"] = {"tag": "ital", "name": "Italic", "min": 0, "default": 0, "max": 1}
     axes = [axes[tag] for tag in AXIS_ORDER if tag in axes]
 
-    all_codes = sorted(set().union(*cmaps))
+    # Without the C0 and C1 controls
     sections = {section: [] for section in SECTIONS}
-    for code in all_codes:
-        if code < 0x20 or 0x7F <= code < 0xA0:
-            continue
-        section = get_section(code)
-        sections[section].append(code)
+    for code in sorted(set().union(*cmaps)):
+        if code >= 0x20 and not 0x7F <= code < 0xA0:
+            sections[get_section(code)].append(code)
 
+    # A glyph is [code, name], plus whether it starts a group and, when not
+    # all families have it, a bit mask of the families that do
+    all_families = (1 << len(cmaps)) - 1
     table = []
     for section, codes in sections.items():
         if not codes:
             continue
-        keyed = sorted((get_sort_key(code, section), code) for code in codes)
         glyphs = []
         previous_group = None
-        for (group, _), code in keyed:
+        for (group, _), code in sorted(
+            (get_sort_key(code, section), code) for code in codes
+        ):
             glyph = [code, get_name(code)]
-            mask = sum(1 << i for i, cmap in enumerate(cmaps) if code in cmap)
-            lead = int(group != previous_group and bool(group))
+            lead = int(bool(group) and group != previous_group)
             previous_group = group
-            if lead or mask != (1 << len(cmaps)) - 1:
+            mask = sum(1 << i for i, cmap in enumerate(cmaps) if code in cmap)
+            if lead or mask != all_families:
                 glyph.append(lead)
-            if mask != (1 << len(cmaps)) - 1:
+            if mask != all_families:
                 glyph.append(mask)
             glyphs.append(glyph)
         table.append([section, glyphs])
