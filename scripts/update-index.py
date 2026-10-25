@@ -94,20 +94,23 @@ SECTIONS = (
         "Punctuation",
         "Modifier letters",
         "Combining marks",
-        "Spaces and invisibles",
+        # Symbols used in text
         "Currency",
         "Math",
         "Arrows",
+        "Geometric shapes",
         "Technical",
-        "Powerline",
+        "Enclosed",
+        "Symbols",
+        # Text-mode graphics
         "Box drawing",
         "Block elements",
         "Sextants and octants",
-        "Legacy computing",
-        "Geometric shapes",
-        "Enclosed",
-        "Symbols",
         "Braille",
+        "Legacy computing",
+        "Powerline",
+        # Nothing to see
+        "Spaces and invisibles",
         "Other",
     ]
 )
@@ -352,6 +355,7 @@ def main():
                 "advance": round(
                     advances[int(len(advances) * 0.95)] / units_per_em, 4
                 ),
+                "widest": advances[-1] / units_per_em,
                 # Line and ink extents, so stacked accents fit the cell
                 "ascent": font["hhea"].ascent / units_per_em,
                 "descent": -font["hhea"].descent / units_per_em,
