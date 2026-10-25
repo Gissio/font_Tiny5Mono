@@ -847,7 +847,7 @@ def build_charset():
 # size labeled in points and in pixels
 RAMP_SCALES = [5, 3, 2, 1]
 RAMP_LINES = [1, 1, 2, 2]      # lines of the test string at each size
-RAMP_TEXT = "The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs."
+RAMP_TEXT = "Sphinx of black quartz, judge my vow. Pack my box with five dozen liquor jugs."
 
 THERMAL_DOTS = 576              # heating elements across the head
 THERMAL_PIXEL = (2, 3)          # dots per font pixel at 6 pt, across and down

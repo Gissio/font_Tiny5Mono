@@ -3,7 +3,10 @@ FAMILY=$(shell python3 scripts/read-config.py --family )
 DRAWBOT_SCRIPTS=$(shell ls documentation/*.py)
 DRAWBOT_OUTPUT=$(shell ls documentation/*.py | sed 's/\.py/.png/g')
 
-sources/Tiny5Mono.designspace: venv
+sources/Tiny5Mono.bdf: venv sources/Tiny5Mono.kbitx
+	. venv/bin/activate; python3 scripts/kbitx2bdf.py "sources/Tiny5Mono.kbitx" "sources/Tiny5Mono.bdf"
+
+sources/Tiny5Mono.designspace: venv sources/Tiny5Mono.bdf sources/Tiny5Mono-build-config.yaml
 	. venv/bin/activate; python3 -m scripts.bdf2ufo.cli -v -c "sources/Tiny5Mono-build-config.yaml" "sources/Tiny5Mono.bdf" "sources"
 
 help:
@@ -29,7 +32,7 @@ build.stamp: venv sources/config.yaml sources/Tiny5Mono.designspace
 	(for config in sources/config*.yaml; do . venv/bin/activate; gftools builder $$config; done)  && touch build.stamp
 	mkdir -p fonts/bdf && cp sources/*.bdf fonts/bdf/
 
-venv/touchfile: requirements.txt
+venv/touchfile: requirements.txt requirements.in
 	test -d venv || python3 -m venv venv
 	. venv/bin/activate; pip install -Ur requirements.txt
 	touch venv/touchfile

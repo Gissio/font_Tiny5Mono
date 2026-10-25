@@ -1,3 +1,4 @@
+*.bdf
 *.ufo
 *.designspace
 .ninja*
