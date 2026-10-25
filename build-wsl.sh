@@ -89,8 +89,9 @@ echo "Running make ${TARGETS[*]} in $BUILD_DIR on $BUILD_CPUS CPUs"
 taskset -c "0-$(( BUILD_CPUS - 1 ))" make -C "$BUILD_DIR" "${TARGETS[@]}"
 
 # Copy the results back: the fonts (make build recreates the folder), make's
-# state files with their times, reports and specimen images (build-specimen.py
-# writes them next to itself, whatever make's target name says)
+# state files with their times, the glyph viewer page, reports and specimen
+# images (build-specimen.py writes them next to itself, whatever make's target
+# name says)
 echo "Copying results back to $REPO_DIR"
 if [ -d "$BUILD_DIR/fonts" ]; then
     rsync -a --delete "$BUILD_DIR/fonts/" "$REPO_DIR/fonts/"
@@ -101,6 +102,9 @@ fi
 source_files=("$BUILD_DIR"/sources/*.bdf "$BUILD_DIR"/sources/*.designspace)
 if [ ${#source_files[@]} -gt 0 ]; then
     rsync -a "${source_files[@]}" "$REPO_DIR/sources/"
+fi
+if [ -e "$BUILD_DIR/index.html" ]; then
+    rsync -a "$BUILD_DIR/index.html" "$REPO_DIR/"
 fi
 if [ -d "$BUILD_DIR/out" ]; then
     rsync -a "$BUILD_DIR/out/" "$REPO_DIR/out/"

@@ -9,6 +9,9 @@ sources/Tiny5Mono.bdf: venv sources/Tiny5Mono.kbitx
 sources/Tiny5Mono.designspace: venv sources/Tiny5Mono.bdf sources/Tiny5Mono-build-config.yaml
 	. venv/bin/activate; python3 -m scripts.bdf2ufo.cli -v -c "sources/Tiny5Mono-build-config.yaml" "sources/Tiny5Mono.bdf" "sources"
 
+index.html: venv build.stamp scripts/update-index.py
+	. venv/bin/activate; python3 scripts/update-index.py index.html --family "Tiny5 Mono" "fonts/variable/Tiny5Mono[BLED,JITT,ROND,wdth,wght].ttf" "fonts/variable/Tiny5Mono-Italic[BLED,JITT,ROND,wdth,wght].ttf"
+
 help:
 	@echo "###"
 	@echo "# Build targets for $(FAMILY)"
@@ -20,7 +23,7 @@ help:
 	@echo "  make images: Creates PNG specimen images in the documentation/ directory"
 	@echo
 
-build: build.stamp
+build: build.stamp index.html
 
 venv: venv/touchfile
 
