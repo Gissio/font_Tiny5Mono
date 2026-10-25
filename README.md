@@ -17,7 +17,7 @@ Tiny5 Mono excels at evoking retro-futurism, constrained-tech nostalgia and clea
 - Embedded systems, firmware and device displays
 - Debug overlays and HUDs in pixel art and lo-fi games
 
-It shares the broad language support of Tiny5, covering **Latin, Greek, Cyrillic and Armenian scripts** across **974 languages**, and adds complete sets of **box-drawing characters and block elements**, plus the sextants and much of **Symbols for Legacy Computing**, for a total of **4,946 glyphs**. It also has **small caps** for Latin and Cyrillic (`smcp` and `c2sc`).
+It shares the broad language support of Tiny5, covering **Latin, Greek, Cyrillic and Armenian scripts** across **974 languages**, and adds complete sets of **box-drawing characters and block elements**, plus the sextants and much of **Symbols for Legacy Computing**, for a total of **4,946 glyphs**. It also has **small caps** for Latin and Cyrillic.
 
 For crisp rows of pixels, set the font size to **increments of 6 pt (8 px)**. To make the pixels square, set the Width axis to **143.82**.
 
