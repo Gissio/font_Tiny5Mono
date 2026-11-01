@@ -78,7 +78,7 @@ custom_anchors:
     "top": [-4, 8]
   "\u030a": # Ring above
     "_top": [-4, 5]
-    "top": [-4, 9]
+    "top": [-4, 8]
   "\u030b": # Double acute
     "_top": [-4, 5]
     "top": [-4, 8]
@@ -140,7 +140,7 @@ custom_anchors:
     "bottom": [-4, -3]
   "\u0325": # Ring below
     "_bottom": [-4, -1]
-    "bottom": [-4, -5]
+    "bottom": [-4, -4]
   "\u0326": # Comma below
     "_bottom": [-4, -1]
     "bottom": [-4, -4]
@@ -186,8 +186,8 @@ custom_anchors:
 
   # Right mark anchors
   "\u0315": # Comma above right
-    "_right": [-2, 5]
-    "right": [-2, 8]
+    "_right": [0, 0]
+    "right": [0, 0]
   "\u0334": # Tilde overlay
     "_right": [0, 0]
     "right": [0, 0]
@@ -198,8 +198,8 @@ custom_anchors:
     "_right": [0, 0]
     "right": [0, 0]
   "\u0358": # Dot above right
-    "right": [-2, 5]
-    "_right": [-2, 5]
+    "right": [0, 0]
+    "_right": [0, 0]
 
   # Ogonek mark anchors
   "\u0328": # Ogonek
@@ -208,8 +208,8 @@ custom_anchors:
 
   # Horn mark anchors
   "\u031b": # Horn
-    "_horn": [-1, 4]
-    "horn": [-1, 4]
+    "_horn": [-1, 3]
+    "horn": [-1, 3]
 
   # Dotted circle anchors
   "\u25cc": # Dotted circle
@@ -217,7 +217,7 @@ custom_anchors:
     "bottom": [2, -1]
     "ogonek": [3, 0]
     "right": [6, 0]
-    "horn": [5, 4]
+    "horn": [5, 3]
 
   # Base anchors: Basic latin
   "F": # Capital f
@@ -271,7 +271,7 @@ custom_anchors:
     "bottom": [2, -1]
     "ogonek": [3, 0]
   "Å": # Capital a with ring above
-    "top": [2, 10]
+    "top": [2, 9]
     "bottom": [2, -1]
   "Æ": # Capital ae
     "top": [2, 6]
@@ -320,8 +320,8 @@ custom_anchors:
     "bottom": [2, -1]
     "ogonek": [2, 0]
   "Ø": # Capital o with stroke
-    "top": [2, 6]
-    "bottom": [2, -1]
+    "top": [2, 7]
+    "bottom": [2, -2]
   "Ù": # Capital u with grave
     "top": [2, 9]
     "bottom": [2, -1]
@@ -352,7 +352,7 @@ custom_anchors:
     "bottom": [2, -1]
     "ogonek": [3, 0]
   "å": # Small a with ring above
-    "top": [2, 9]
+    "top": [2, 8]
     "bottom": [2, -1]
   "æ": # Small ae
     "top": [2, 5]
@@ -400,8 +400,8 @@ custom_anchors:
     "bottom": [2, -1]
     "ogonek": [2, 0]
   "ø": # Small o with stroke
-    "top": [2, 5]
-    "bottom": [2, -1]
+    "top": [2, 6]
+    "bottom": [2, -2]
   "ù": # Small u with grave
     "top": [2, 8]
     "bottom": [2, -1]
@@ -442,10 +442,10 @@ custom_anchors:
     "top": [2, 8]
     "bottom": [2, -1]
   "Đ": # Capital d with stroke
-    "top": [2, 6]
-    "bottom": [2, -1]
+    "top": [3, 6]
+    "bottom": [3, -1]
   "đ": # Small d with stroke
-    "top": [2, 6]
+    "top": [2, 7]
     "bottom": [2, -1]
   "Ē": # Capital e with macron
     "top": [2, 8]
@@ -580,8 +580,8 @@ custom_anchors:
     "top": [2, 6]
     "bottom": [2, -1]
   "Ɲ": # Capital n with left hook
-    "top": [2, 6]
-    "bottom": [2, -2]
+    "top": [3, 6]
+    "bottom": [3, -2]
   "Ɵ": # Capital o with middle tilde
     "top": [2, 6]
     "bottom": [2, -1]
@@ -1135,7 +1135,7 @@ custom_anchors:
     "top": [2, 5]
     "bottom": [2, -1]
     "ogonek": [2, 0]
-    "horn": [5, 4]
+    "horn": [5, 3]
   "ᴘ": # Small capital p
     "top": [2, 5]
     "bottom": [2, -1]
@@ -1155,6 +1155,7 @@ custom_anchors:
     "top": [2, 5]
     "bottom": [2, -1]
     "ogonek": [2, 0]
+    "horn": [5, 3]
   "ᴠ": # Small capital v
     "top": [2, 5]
     "bottom": [2, -1]
@@ -1190,7 +1191,7 @@ custom_anchors:
     "top": [2, 5]
     "bottom": [2, -1]
   "ʛ": # Small capital g with hook
-    "top": [2, 5]
+    "top": [2, 6]
     "bottom": [2, -1]
   "𝼄": # Small capital l with belt
     "top": [2, 5]
@@ -1206,6 +1207,28 @@ custom_anchors:
     "bottom": [2, -1]
 
   # Base anchors: Cyrillic small caps
+  "uni019B.sc": # Small capital lambda with stroke
+    "top": [2, 5]
+    "bottom": [2, -1]
+  "uni0250.sc": # Small capital turned a
+    "top": [2, 5]
+    "bottom": [2, -1]
+  "uni0264.sc": # Small capital rams horn
+    "top": [2, 5]
+    "bottom": [2, -2]
+  "uni0265.sc": # Small capital turned h
+    "top": [2, 5]
+    "bottom": [2, -1]
+  "uni0269.sc": # Small capital iota
+    "top": [2, 5]
+    "bottom": [3, -1]
+  "uni025B.sc": # Small capital open e
+    "top": [2, 5]
+    "bottom": [2, -1]
+    "ogonek": [3, 0]
+  "uni0272.sc": # Small capital n with left hook
+    "top": [3, 5]
+    "bottom": [3, -2]
   "uni0430.sc": # Small capital a
     "top": [2, 5]
     "bottom": [2, -1]
@@ -1234,8 +1257,17 @@ custom_anchors:
     "top": [3, 5]
     "bottom": [2, -1]
   "uni045B.sc": # Small capital tshe
+    "top": [2, 6]
+    "bottom": [2, -1]
+  "uni0501.sc": # Small capital komi de
     "top": [2, 5]
     "bottom": [2, -1]
+  "uniA7B7.sc": # Small capital omega
+    "top": [2, 5]
+    "bottom": [2, -1]
+  "uniA7B9.sc": # Small capital u with stroke
+    "top": [2, 6]
+    "bottom": [2, -2]
 
 # Define default values for variable axes.
 default_axis_values:

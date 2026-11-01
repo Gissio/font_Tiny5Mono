@@ -47,6 +47,9 @@ def build_custom_anchors(bdf_font: BDFFont, custom_anchors: dict) -> dict:
 
     Returns:
         Dictionary of processed custom anchors.
+
+    Raises:
+        ValueError: If a glyph with custom anchors is not in the font.
     """
     anchors = {}
     if custom_anchors is None:
@@ -58,8 +61,7 @@ def build_custom_anchors(bdf_font: BDFFont, custom_anchors: dict) -> dict:
         elif glyph_key in bdf_font.glyphs:
             glyph_name = glyph_key
         else:
-            logger.warning("Custom anchors for missing glyph '%s'", glyph_key)
-            continue
+            raise ValueError(f"Custom anchors for missing glyph '{glyph_key}'")
 
         anchors[glyph_name] = {}
         for anchor_name, anchor_offset in glyph_anchor.items():
