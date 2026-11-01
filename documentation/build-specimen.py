@@ -46,7 +46,7 @@ MONO_ITALIC_PATH = ROOT_PATH / "fonts/variable/Tiny5Mono-Italic[BLED,JITT,ROND,w
 
 # Font version, as the devices display it; keep in sync with the font's
 # version (name ID 5)
-VERSION = "V2.007"
+VERSION = "V3.000"
 
 # The character cell, in font pixels: 6 across, and 9 down, from the
 # descender line 2 pixels below the baseline to the cap line of accented
