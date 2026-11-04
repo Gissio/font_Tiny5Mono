@@ -55,6 +55,12 @@ The specimen images and videos in `documentation/` are made by `python documenta
 
 ## Changelog
 
+### 3.001
+
+- Added CRT, LCD and Matrix bold, italic and bold+italic static fonts.
+- Removed U+00AD glyph.
+- Decreased bold weight.
+
 ### 3.000
 
 - First release.

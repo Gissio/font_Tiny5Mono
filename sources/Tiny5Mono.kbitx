@@ -12,9 +12,9 @@
 <name id="0" value="Copyright 2026 The Tiny5 Mono Project Authors (https://github.com/Gissio/font_Tiny5Mono)"/>
 <name id="1" value="Tiny5 Mono"/>
 <name id="2" value="Regular"/>
-<name id="3" value="3.000;KBnP;Tiny5 Mono-Regular"/>
+<name id="3" value="3.001;KBnP;Tiny5 Mono-Regular"/>
 <name id="4" value="Tiny5 Mono Regular"/>
-<name id="5" value="3.000"/>
+<name id="5" value="3.001"/>
 <name id="6" value="Tiny5"/>
 <name id="8" value="Stefan Schmidt Art"/>
 <name id="9" value="Stefan Schmidt"/>
@@ -131,7 +131,6 @@
 <g u="170" x="1" y="5" w="6" d="AwMBQ8MA/wBC"/>
 <g u="171" x="0" y="4" w="6" d="AwXCAP8CQgJBAkECQQ"/>
 <g u="172" x="0" y="4" w="6" d="AwVFBEEEQQ"/>
-<g u="173" x="0" y="3" w="6" d="AQVF"/>
 <g u="174" x="0" y="6" w="6" d="BgUBQ8IA/wJDwwD/AEICQ8UA/wD/AEMB"/>
 <g u="175" x="1" y="6" w="6" d="AQND"/>
 <g u="176" x="1" y="5" w="6" d="AwPJAP8A/wD/AP8A"/>
@@ -3197,7 +3196,7 @@
 <g u="10118" x="0" y="6" w="6" d="BgUBQ8IA/wNEAUMBRAFCAUMB"/>
 <g u="10119" x="0" y="6" w="6" d="BgUBQ8IA/wNCA0LDAP8AQgPC/wBDAQ"/>
 <g u="10120" x="0" y="6" w="6" d="BgUBQwFCAUPDAP8AQwJCAkIBQwE"/>
-<g u="10121" x="0" y="5" w="6" d="BQXFAP8A/wBDwwD/AELDAP8AQscA/wD/AP8A"/>
+<g u="10121" x="0" y="6" w="6" d="BgUBQ8YA/wD/AP8Dw/8A/wLI/wD/AP8A/wBDAQ"/>
 <g u="10122" x="0" y="6" w="6" d="BgUBQwFCAUMCRAFEAUIBQwE"/>
 <g u="10123" x="0" y="6" w="6" d="BgUBQ8IA/wJFAUMBQwPC/wBDAQ"/>
 <g u="10124" x="0" y="6" w="6" d="BgUBQ8IA/wNDAUUBQgJCAUMB"/>
