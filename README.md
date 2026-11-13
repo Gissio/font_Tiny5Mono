@@ -29,8 +29,6 @@ Tiny5 Mono is also available in [BDF](https://en.wikipedia.org/wiki/Glyph_Bitmap
 
 ![Tiny5 Mono variable axes](documentation/tiny5mono-axes.gif)
 
-![Code editor on a color CRT, Tiny5 Code](documentation/tiny5code-sample1.jpg)
-
 ![Character set on a character LCD, Tiny5 Mono](documentation/tiny5mono-sample2.jpg)
 
 ![Size ramp on a thermal receipt, Tiny5 Mono](documentation/tiny5mono-sample3.jpg)
