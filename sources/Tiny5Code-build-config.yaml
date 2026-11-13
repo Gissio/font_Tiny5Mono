@@ -1,0 +1,13 @@
+# Tiny5 Code: Tiny5 Mono with programming ligatures.
+#
+# This file is applied on top of Tiny5Mono-build-config.yaml, which holds all
+# other options (metrics, anchors, axes, instances):
+#
+#   python3 -m scripts.bdf2ufo.cli -c sources/Tiny5Mono-build-config.yaml -c sources/Tiny5Code-build-config.yaml sources/Tiny5Mono.bdf sources
+
+# The family name, which replaces the FAMILY_NAME of the .bdf font.
+family_name: "Tiny5 Code"
+
+# Whether to add the ligature glyphs (unencoded glyphs named like
+# "hyphen_greater.liga") and their calt feature.
+ligatures: true

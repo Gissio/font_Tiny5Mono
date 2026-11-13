@@ -1,4 +1,4 @@
-![Code editor on a color CRT, Tiny5 Mono](documentation/tiny5mono-sample1.jpg)
+![Code editor on a color CRT, Tiny5 Mono](documentation/tiny5code-sample1.jpg)
 
 # Tiny5 Mono
 
