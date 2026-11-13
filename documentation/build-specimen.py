@@ -17,7 +17,13 @@
 #
 # The editor is drawn twice more for the font's itch.io project:
 # tiny5mono-itch.jpg, its cover image, and tiny5mono-itch-banner.jpg, the
-# banner across the head of its page.
+# banner across the head of its page; and once more for the font's GitHub
+# repository: tiny5mono-github.jpg, its social preview image.
+#
+# Tiny5 Code, Tiny5 Mono with ligatures, shares every other specimen with
+# Tiny5 Mono, but has its own editor sample, tiny5code-sample1.jpg, set with
+# its ligatures: its other glyphs are Tiny5 Mono's, and its ligature glyphs
+# are read from its outlines, so no text shaping is needed.
 #
 # Besides the build's own requirements, the thermal receipt is path-traced
 # with Mitsuba 3 (pip install mitsuba), and the animation is encoded by
@@ -32,6 +38,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
+from fontTools.pens.pointInsidePen import PointInsidePen
 from fontTools.ttLib import TTFont
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
@@ -43,6 +50,11 @@ OUT_PATH = Path(__file__).resolve().parent
 
 MONO_PATH = ROOT_PATH / "fonts/variable/Tiny5Mono[BLED,JITT,ROND,wdth,wght].ttf"
 MONO_ITALIC_PATH = ROOT_PATH / "fonts/variable/Tiny5Mono-Italic[BLED,JITT,ROND,wdth,wght].ttf"
+
+# Tiny5 Code is Tiny5 Mono with ligatures: every other glyph is the same, so
+# only its ligature glyphs are read from it
+CODE_PATH = ROOT_PATH / "fonts/variable/Tiny5Code[BLED,JITT,ROND,wdth,wght].ttf"
+LIGATURE_SUFFIX = ".liga"
 
 # Font version, as the devices display it; keep in sync with the font's
 # version (name ID 5)
@@ -120,15 +132,65 @@ def check_coverage(chars):
         raise ValueError("Not in the font: " + " ".join(f"U+{ord(c):04X}" for c in missing))
 
 
+@lru_cache(maxsize=None)
+def ligatures():
+    """Return Tiny5 Code's ligatures: a dictionary from each ligature's
+    characters to a mask of its glyph, as many cells wide as it has
+    characters.
+
+    A ligature glyph is named after its characters' glyph names, such as
+    hyphen_greater.liga for "->". It takes the last of their cells, and its
+    drawing reaches back over the others, which the font leaves empty. Its
+    mask is read from the outline, at Regular, by testing the center of every
+    font pixel, so the specimen needs no text shaping.
+    """
+    font = TTFont(CODE_PATH)
+    glyph_set = font.getGlyphSet()
+    characters = {name: chr(code_point) for code_point, name in font.getBestCmap().items()}
+
+    masks = {}
+    for name in font.getGlyphOrder():
+        if not name.endswith(LIGATURE_SUFFIX):
+            continue
+        sequence = "".join(characters[part]
+                           for part in name.removesuffix(LIGATURE_SUFFIX).split("_"))
+        reach = (len(sequence) - 1) * CELL_WIDTH
+        mask = Image.new("L", (len(sequence) * CELL_WIDTH, CELL_HEIGHT), 0)
+        for row in range(CELL_HEIGHT):
+            for col in range(mask.size[0]):
+                center = ((col - reach + 0.5) * PIXEL_WIDTH,
+                          (CELL_ASCENT - 1 - row + 0.5) * PIXEL_HEIGHT)
+                pen = PointInsidePen(glyph_set, center)
+                glyph_set[name].draw(pen)
+                if pen.getResult():
+                    mask.putpixel((col, row), 255)
+        masks[sequence] = mask
+
+    return masks
+
+
+def ligature_runs(text):
+    """Find the ligatures Tiny5 Code forms in a line of text, as its calt
+    feature does: only where a run of ligature characters is a ligature as
+    a whole, so "->" joins but "->->" or "====" do not. Yields the start of
+    each, and its characters."""
+    characters = "".join(sorted(set("".join(ligatures()))))
+    for match in re.finditer(f"[{re.escape(characters)}]+", text):
+        if match.group() in ligatures():
+            yield match.start(), match.group()
+
+
 # --- The text screen --------------------------------------------------------
 
 class TextScreen:
     """A text-mode screen: a grid of character cells, each with its own
-    character, foreground and background color."""
+    character, foreground and background color. With ligatures, it is set
+    in Tiny5 Code, which joins operators such as "->" across their cells."""
 
-    def __init__(self, cols, rows, fg, bg):
+    def __init__(self, cols, rows, fg, bg, ligatures=False):
         self.cols = cols
         self.rows = rows
+        self.ligatures = ligatures
         self.cells = [[[" ", fg, bg] for _ in range(cols)] for _ in range(rows)]
 
     def put(self, col, row, text, fg=None, bg=None):
@@ -166,15 +228,23 @@ class TextScreen:
         return size
 
     def render(self):
-        """Render the screen at one image pixel per font pixel."""
+        """Render the screen at one image pixel per font pixel. A ligature
+        takes the foreground color of its last character's cell."""
         check_coverage({cell[0] for line in self.cells for cell in line})
         img = Image.new("RGB", (self.cols * CELL_WIDTH, self.rows * CELL_HEIGHT))
         for y, line in enumerate(self.cells):
+            runs = []
+            if self.ligatures:
+                runs = list(ligature_runs("".join(cell[0] for cell in line)))
+            joined = {start + i for start, sequence in runs for i in range(len(sequence))}
             for x, (char, fg, bg) in enumerate(line):
                 xy = (x * CELL_WIDTH, y * CELL_HEIGHT)
                 img.paste(bg, xy + (xy[0] + CELL_WIDTH, xy[1] + CELL_HEIGHT))
-                if char != " ":
+                if char != " " and x not in joined:
                     img.paste(fg, xy, glyph_cell(char))
+            for start, sequence in runs:
+                fg = line[start + len(sequence) - 1][1]
+                img.paste(fg, (start * CELL_WIDTH, y * CELL_HEIGHT), ligatures()[sequence])
 
         return img
 
@@ -272,10 +342,10 @@ def shade(img, field):
     return ImageChops.multiply(img, field.convert("RGB"))
 
 
-def save_image(img, name, google=True):
-    """Save a specimen as tiny5mono-<name>.jpg, along with a -google variant
-    resampled to GOOGLE_SIZE where one is called for."""
-    stem = "tiny5mono-" + name
+def save_image(img, name, google=True, family="tiny5mono"):
+    """Save a specimen as <family>-<name>.jpg, tiny5mono or tiny5code, along
+    with a -google variant resampled to GOOGLE_SIZE where one is called for."""
+    stem = family + "-" + name
     img.save(OUT_PATH / (stem + ".jpg"), optimize=True, quality=JPG_QUALITY)
     if google:
         resampled = img.resize(GOOGLE_SIZE, Image.LANCZOS)
@@ -458,6 +528,17 @@ ED_SOURCE = [
     "    return 0;",
     "}",
 ]
+
+# Tiny5 Code's source keeps the comment, and has an operator or two on every
+# line after it, so its ligatures show: <= || == // -> !=
+ED_CODE_SOURCE = ED_SOURCE[:6] + [
+    "#include <stdio.h>",
+    "int main(int argc, char **argv) {",
+    "    if (argc <= 1 || argv[1][0] == 0)",
+    "        return 1;  // usage -> stderr",
+    "    return puts(argv[1]) != EOF;",
+    "}",
+]
 ED_CURSOR_LINE = 10             # 0-based: the line being typed
 ED_KEYWORDS = {"int", "void", "char", "const", "unsigned", "static"}
 ED_CONTROLS = {"return", "if", "else", "for", "while"}
@@ -470,19 +551,31 @@ ED_NAME_PITCH = 8               # font pixels from one line of a stacked name
 ITCH_SIZE = (630, 500)
 BANNER_SIZE = (960, 300)
 
+# GitHub presents a repository, where it is shared, by a 1280x640 social
+# preview image
+GITHUB_SIZE = (1280, 640)
+
 # The editor's layouts: the canvas, the screen's rows, as many columns
 # following as fill the canvas's width, the source's first column, after
 # the gutter, and the name in the comment, by its lines and their scale.
 # The sample shows the whole program; the itch.io cover, squarer, only the
 # comment, the name in it stacked and twice the size, behind a narrower
 # gutter; and the page banner, a strip, only the comment too, the name on
-# one line twice the size, so it spans the strip. A line's trailing comment
-# is left out where it would run off the screen
+# one line twice the size, so it spans the strip. GitHub's social preview,
+# wider, shows the whole program as the sample does. A line's trailing
+# comment is left out where it would run off the screen
 ED_LAYOUTS = {
     "sample1": {"canvas": CANVAS, "rows": 14, "code_col": 8, "name": ["Tiny5 Mono"], "scale": 1},
+    "github": {"canvas": GITHUB_SIZE, "rows": 14, "code_col": 8, "name": ["Tiny5 Mono"], "scale": 1},
     "itch": {"canvas": ITCH_SIZE, "rows": 17, "code_col": 6, "name": ["Tiny5", "Mono"], "scale": 2},
     "itch-banner": {"canvas": BANNER_SIZE, "rows": 12, "code_col": 8, "name": ["Tiny5 Mono"],
                     "scale": 2},
+}
+
+# Tiny5 Code's sample, laid out as Tiny5 Mono's, set with its ligatures
+ED_CODE_LAYOUTS = {
+    "sample1": {"canvas": CANVAS, "rows": 14, "code_col": 8, "name": ["Tiny5 Code"], "scale": 1,
+                "code": True},
 }
 
 
@@ -523,15 +616,17 @@ def put_code(s, col, row, line, bg):
 def compose_editor(layout):
     """Compose the editor in a layout."""
     rows, code_col, scale = layout["rows"], layout["code_col"], layout["scale"]
+    code = layout.get("code", False)
     cols = crt_columns(rows, layout["canvas"])
-    s = TextScreen(cols, rows, ED_TEXT, ED_BG)
+    s = TextScreen(cols, rows, ED_TEXT, ED_BG, ligatures=code)
 
     # The source's comment makes room for the name on one line at its
     # smallest, and opens up as many lines more as a larger name needs,
     # keeping a pixel of the name's below it
     name_size = big_bitmap(layout["name"], ED_NAME_PITCH).size
     extra = big_cells((name_size[0] * scale, (name_size[1] + 1) * scale))[1] - 3
-    source = ED_SOURCE[:1] + [" *"] * extra + ED_SOURCE[1:]
+    source = ED_CODE_SOURCE if code else ED_SOURCE
+    source = source[:1] + [" *"] * extra + source[1:]
     cursor_line = ED_CURSOR_LINE + extra
 
     # The tab bar: the file being edited, and one more behind it
@@ -570,10 +665,15 @@ def compose_editor(layout):
 def build_editor():
     """The modern editor, on a color CRT: the tab bar against the top of
     the frame and the status bar against its foot. Its itch.io cover and
-    banner are laid out anew on their own frames."""
+    banner, and its GitHub social preview, are laid out anew on their own
+    frames. Tiny5 Code's sample is the editor once more, set with its
+    ligatures."""
     for name, layout in ED_LAYOUTS.items():
         save_image(render_crt(compose_editor(layout), layout["canvas"]), name,
                    google=layout["canvas"] == CANVAS)
+    for name, layout in ED_CODE_LAYOUTS.items():
+        save_image(render_crt(compose_editor(layout), layout["canvas"]), name,
+                   google=layout["canvas"] == CANVAS, family="tiny5code")
 
 
 # --- System monitor: the terminal ------------------------------------------
@@ -1624,7 +1724,9 @@ def build_animation():
 if __name__ == "__main__":
     build_animation()                           # the presentation: variation axes, animated
     build_editor()                              # 1: code, modern editor on a color CRT,
-                                                # and the itch.io cover and banner
+                                                # the itch.io cover and banner, the
+                                                # GitHub social preview, and Tiny5
+                                                # Code's sample, with ligatures
     build_charset()                             # 2: character set, character LCD
     build_ramp()                                # 3: size ramp, thermal receipt
     build_monitor()                             # 4: system monitor, color CRT

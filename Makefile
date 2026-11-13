@@ -9,6 +9,9 @@ sources/Tiny5Mono.bdf: venv sources/Tiny5Mono.kbitx
 sources/Tiny5Mono.designspace: venv sources/Tiny5Mono.bdf sources/Tiny5Mono-build-config.yaml
 	. venv/bin/activate; python3 -m scripts.bdf2ufo.cli -v -c "sources/Tiny5Mono-build-config.yaml" "sources/Tiny5Mono.bdf" "sources"
 
+sources/Tiny5Code.designspace: venv sources/Tiny5Mono.bdf sources/Tiny5Mono-build-config.yaml sources/Tiny5Code-build-config.yaml
+	. venv/bin/activate; python3 -m scripts.bdf2ufo.cli -v -c "sources/Tiny5Mono-build-config.yaml" -c "sources/Tiny5Code-build-config.yaml" "sources/Tiny5Mono.bdf" "sources"
+
 index.html: venv build.stamp scripts/update-index.py
 	. venv/bin/activate; python3 scripts/update-index.py index.html --family "Tiny5 Mono" "fonts/variable/Tiny5Mono[BLED,JITT,ROND,wdth,wght].ttf" "fonts/variable/Tiny5Mono-Italic[BLED,JITT,ROND,wdth,wght].ttf"
 
@@ -30,7 +33,7 @@ venv: venv/touchfile
 customize: venv
 	. venv/bin/activate; python3 scripts/customize.py
 
-build.stamp: venv sources/config.yaml sources/Tiny5Mono.designspace
+build.stamp: venv sources/config.yaml sources/Tiny5Mono.designspace sources/Tiny5Code.designspace
 	rm -rf fonts
 	(for config in sources/config*.yaml; do . venv/bin/activate; gftools builder $$config; done)  && touch build.stamp
 	mkdir -p fonts/bdf && cp sources/*.bdf fonts/bdf/
