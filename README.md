@@ -1,4 +1,4 @@
-![Code editor on a color CRT, Tiny5 Mono](documentation/tiny5code-sample1.jpg)
+![Tiny5 Mono variable axes](documentation/tiny5mono-axes.gif)
 
 # Tiny5 Mono
 
@@ -27,7 +27,7 @@ For crisp rows of pixels, set the font size to **increments of 6 pt (8 px)**. To
 
 Tiny5 Mono is also available in [BDF](https://en.wikipedia.org/wiki/Glyph_Bitmap_Distribution_Format) format for seamless integration with the [mcu-renderer](https://github.com/Gissio/mcu-renderer), [u8g2](https://github.com/olikraus/u8g2) and [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI) libraries.
 
-![Tiny5 Mono variable axes](documentation/tiny5mono-axes.gif)
+![Code editor on a color CRT, Tiny5 Mono](documentation/tiny5code-sample1.jpg)
 
 ![Character set on a character LCD, Tiny5 Mono](documentation/tiny5mono-sample2.jpg)
 
