@@ -12,7 +12,8 @@ import logging
 import numpy as np
 
 from .bdf_font import BDFFont
-from .data import LIGATURE_SPACER_NAME, LIGATURE_SUFFIX
+from .calt import DIGITS, HEX_LETTERS, CaltRules
+from .data import LIGATURE_SPACER_NAME
 from .utils import Vec2
 
 # Definitions
@@ -20,14 +21,13 @@ logger = logging.getLogger(__name__)
 
 
 def build_ligatures(bdf_font: BDFFont) -> dict:
-    """Add the ligature glyphs of the font and return their substitutions.
+    """Add the contextual alternates of the font and return their rules.
 
-    A ligature glyph is an unencoded glyph named after the glyph names of its
-    characters, joined by underscores, with a ".liga" suffix: for instance,
-    "hyphen_greater.liga" for "->". It is drawn as wide as its characters
-    together.
+    The contextual alternates are unencoded glyphs: ligatures (".liga"), run
+    pieces (".seq") and numeric forms (".num"); see CaltRules. A ligature or a
+    run head is drawn as wide as its characters together.
 
-    In a monospace font, a ligature of n characters is drawn n cells wide. It
+    In a monospace font, a glyph of n characters is drawn n cells wide. It
     is turned into a glyph one cell wide, whose drawing extends over the n - 1
     cells to its left, which an empty spacer glyph fills. So every glyph keeps
     the monospace advance, and the cursor still moves one cell at a time.
@@ -39,39 +39,51 @@ def build_ligatures(bdf_font: BDFFont) -> dict:
         bdf_font: The BDF font object.
 
     Returns:
-        Dictionary with "ligatures", a list of (ligature glyph name, list of
-        component glyph names), longest first, and "spacer", the name of the
-        spacer glyph of a monospace font, or None.
+        Dictionary with "rules", the CaltRules, "names", a dictionary from
+        characters to glyph names, and "spacer", the name of the spacer glyph
+        of a monospace font, or None.
     """
     monospace = bdf_font.monospace
 
-    ligatures = []
-    for ligature_name, glyph in bdf_font.ligature_glyphs.items():
-        components = _get_components(bdf_font, ligature_name)
-        if components is None:
-            continue
+    characters = {
+        name: glyph["character"]
+        for name, glyph in bdf_font.glyphs.items()
+        if glyph["character"] is not None
+    }
+    rules = CaltRules(bdf_font.ligature_glyphs, characters, logger.warning)
 
-        if monospace:
-            expected_advance = len(components) * monospace
-            if glyph["advance"] != expected_advance:
+    if not monospace and rules.has_runs():
+        logger.warning("Runs need a monospace font, skipping the .seq glyphs")
+        for line in list(rules.lines):
+            rules.remove(rules.lines[line]["start"])
+
+    # Glyphs whose advance does not fit their cells are left out
+    if monospace:
+        for name, cells in list(rules.cells.items()):
+            advance = bdf_font.ligature_glyphs[name]["advance"]
+            if name in rules.cells and advance != cells * monospace:
                 logger.warning(
-                    "Ligature '%s' has advance %d, expected %d for %d monospace cells, skipping",
-                    ligature_name,
-                    glyph["advance"],
-                    expected_advance,
-                    len(components),
+                    "'%s' has advance %d, expected %d for %d monospace cells, skipping",
+                    name,
+                    advance,
+                    cells * monospace,
+                    cells,
                 )
-                continue
+                line = rules.remove(name)
+                if line is not None:
+                    logger.warning("Runs of '%s' have no %s, skipping them", line, name)
 
+    for name, cells in rules.cells.items():
+        glyph = bdf_font.ligature_glyphs[name]
+        if monospace:
             glyph = dict(glyph)
-            glyph["offset"] = glyph["offset"] - Vec2(expected_advance - monospace, 0)
+            glyph["offset"] = glyph["offset"] - Vec2((cells - 1) * monospace, 0)
             glyph["advance"] = monospace
 
-        bdf_font.glyphs[ligature_name] = glyph
-        ligatures.append((ligature_name, components))
+        bdf_font.glyphs[name] = glyph
 
     spacer = None
-    if ligatures and monospace:
+    if monospace and any(cells > 1 for cells in rules.cells.values()):
         if LIGATURE_SPACER_NAME in bdf_font.glyphs:
             raise ValueError(
                 f"The font has a glyph named '{LIGATURE_SPACER_NAME}', which is "
@@ -86,121 +98,139 @@ def build_ligatures(bdf_font: BDFFont) -> dict:
             "advance": monospace,
         }
 
-    # Longer ligatures first, so that "-->" is tried before "->"
-    ligatures.sort(key=lambda ligature: -len(ligature[1]))
+    logger.info(
+        "Added %d ligatures, %d run pieces and %d numeric forms",
+        len(rules.ligatures),
+        sum(len(pieces) for pieces in rules.lines.values())
+        + sum(len(heads) for heads in rules.get_head_lists()),
+        len(rules.numerics),
+    )
 
-    logger.info("Added %d ligatures", len(ligatures))
-
-    return {"ligatures": ligatures, "spacer": spacer}
-
-
-def _get_components(bdf_font: BDFFont, ligature_name: str) -> list:
-    """Return the glyph names of the characters of a ligature.
-
-    Args:
-        bdf_font: The BDF font object.
-        ligature_name: The name of the ligature glyph, such as
-            "hyphen_greater.liga".
-
-    Returns:
-        A list of glyph names, or None if the name does not describe a
-        ligature of at least two encoded glyphs of the font.
-    """
-    component_names = ligature_name.removesuffix(LIGATURE_SUFFIX).split("_")
-
-    for component_name in component_names:
-        if (
-            component_name not in bdf_font.glyphs
-            or bdf_font.glyphs[component_name]["character"] is None
-        ):
-            logger.warning(
-                "Ligature '%s' names '%s', which is not an encoded glyph of the font, skipping",
-                ligature_name,
-                component_name,
-            )
-            return None
-
-    if len(component_names) < 2:
-        logger.warning(
-            "Ligature '%s' has fewer than two characters, skipping", ligature_name
-        )
-        return None
-
-    return component_names
+    return {"rules": rules, "names": dict(bdf_font.names), "spacer": spacer}
 
 
 def get_ligature_feature(ligatures: dict) -> list:
-    """Return the lines of the calt feature that substitutes the ligatures.
+    """Return the lines of the calt feature, from the rules of build_ligatures().
 
-    A ligature is only substituted where its characters are not preceded or
-    followed by another character of any ligature, that is, where the run of
-    such characters is the ligature itself. So "====" or "<==>" are not
-    partly substituted.
+    The lookups follow CaltRules.shape() step by step: ligatures, longest
+    first, then the heads of runs, then their line characters, then numeric
+    forms.
 
     Args:
         ligatures: The ligatures, from build_ligatures().
 
     Returns:
-        A list of feature file lines, empty if the font has no ligatures.
+        A list of feature file lines, empty if the font has no contextual
+        alternates.
     """
-    ligature_list = ligatures.get("ligatures", [])
-    spacer = ligatures.get("spacer")
-    if len(ligature_list) == 0:
+    rules = ligatures.get("rules")
+    if rules is None or len(rules.cells) == 0:
         return []
 
-    component_names = []
-    for _ligature_name, components in ligature_list:
-        for component_name in components:
-            if component_name not in component_names:
-                component_names.append(component_name)
+    names = ligatures["names"]
+    spacer = ligatures["spacer"]
+
+    def glyph(char):
+        return names[char]
+
+    def slot(chars, glyph_names=()):
+        items = [glyph(char) for char in chars if char in names] + list(glyph_names)
+        return items[0] if len(items) == 1 else "[" + " ".join(items) + "]"
+
+    def context(slots):
+        return [slot(*item) for item in slots]
 
     lines = []
-    lines.append(f"@ligature_components = [{' '.join(component_names)}];")
-    lines.append("")
 
     # Without a spacer, each ligature substitutes from a lookup of its own,
     # referenced from the context
     if spacer is None:
-        for ligature_name, components in ligature_list:
+        for ligature_name, chars in rules.ligatures:
             lookup_name = _get_lookup_name(ligature_name) + "_sub"
             lines.append(f"lookup {lookup_name} {{")
-            lines.append(f"    sub {' '.join(components)} by {ligature_name};")
+            lines.append(f"    sub {' '.join(glyph(c) for c in chars)} by {ligature_name};")
             lines.append(f"}} {lookup_name};")
             lines.append("")
 
     lines.append("feature calt {")
-    for ligature_name, components in ligature_list:
+
+    # Ligatures
+    for ligature_name, chars in rules.ligatures:
         lookup_name = _get_lookup_name(ligature_name)
-        first, rest = components[0], " ".join(components[1:])
+        components = [glyph(c) for c in chars]
+        marked = [components[0] + "'"] + components[1:]
 
         lines.append(f"    lookup {lookup_name} {{")
-        lines.append(f"        ignore sub @ligature_components {first}' {rest};")
-        lines.append(f"        ignore sub {first}' {rest} @ligature_components;")
-
+        for before, after in rules.get_ignored_contexts(chars):
+            ignored = [glyph(c) for c in before] + marked + [glyph(c) for c in after]
+            lines.append(f"        ignore sub {' '.join(ignored)};")
         if spacer is None:
-            lines.append(
-                f"        sub {first}' lookup {lookup_name}_sub "
-                + " ".join(f"{name}'" for name in components[1:])
-                + ";"
-            )
+            lookups = " ".join(f"{c}'" for c in components[1:])
+            lines.append(f"        sub {marked[0]} lookup {lookup_name}_sub {lookups};")
         else:
-            # Each character becomes the spacer, and the last one the
-            # ligature. The rule for the last character comes first, as the
-            # earlier characters are already spacers when it applies.
-            for index in reversed(range(len(components))):
-                context = [spacer] * index
-                context.append(components[index] + "'")
-                context += components[index + 1 :]
-                target = ligature_name if index == len(components) - 1 else spacer
-                lines.append(f"        sub {' '.join(context)} by {target};")
-
+            lines += _get_spaced_rules(components, [], [], ligature_name, spacer)
         lines.append(f"    }} {lookup_name};")
+
+    # Heads of runs: between two lines, then after and before each line
+    for role, step_line, index, items in rules.get_head_lookups():
+        lookup_name = f"calt_run_{role}_{index}"
+        if step_line is not None:
+            lookup_name = f"calt_run_{role}_{glyph(step_line)}_{index}"
+        lines.append(f"    lookup {lookup_name} {{")
+        for head, line, name in items:
+            for before, after in rules.get_head_contexts(role, line, name):
+                lines += _get_spaced_rules(
+                    [glyph(c) for c in head], context(before), context(after), name, spacer
+                )
+        lines.append(f"    }} {lookup_name};")
+
+    # Line characters of runs
+    if rules.lines:
+        lines.append("    lookup calt_run_lines {")
+        for line, pieces in rules.lines.items():
+            left, rights = rules.get_line_contexts(line)
+            left = slot(*left)
+            rights = [" ".join(context(right)) for right in rights]
+            for right in rights:
+                lines.append(f"        sub {left} {glyph(line)}' {right} by {pieces['middle']};")
+            lines.append(f"        sub {left} {glyph(line)}' by {pieces['end']};")
+            for right in rights:
+                lines.append(f"        sub {glyph(line)}' {right} by {pieces['start']};")
+        lines.append("    } calt_run_lines;")
+
+    # Numeric forms
+    if rules.numerics:
+        digits = slot(DIGITS)
+        lines.append("    lookup calt_numerics {")
+        for char, name in rules.numerics.items():
+            lines.append(f"        sub {digits} {glyph(char)}' {digits} by {name};")
+            if "0" in names:
+                lines.append(f"        sub {glyph('0')} {glyph(char)}' {slot(HEX_LETTERS)} by {name};")
+        lines.append("    } calt_numerics;")
+
     lines.append("} calt;")
     lines.append("")
 
     return lines
 
 
+def _get_spaced_rules(
+    components: list, backtrack: list, lookahead: list, name: str, spacer: str
+) -> list:
+    """Return the rules that turn each component into the spacer, and the
+    last one into the glyph. The rule for the last component comes first, as
+    the earlier components are already spacers when it applies."""
+    rules = []
+    for index in reversed(range(len(components))):
+        context = backtrack + [spacer] * index
+        context.append(components[index] + "'")
+        context += components[index + 1 :] + lookahead
+        target = name if index == len(components) - 1 else spacer
+        rules.append(f"        sub {' '.join(context)} by {target};")
+
+    return rules
+
+
 def _get_lookup_name(ligature_name: str) -> str:
-    """Return the name of the calt lookup of a ligature."""
-    return "calt_" + ligature_name.removesuffix(LIGATURE_SUFFIX)
+    """Return the calt lookup name of a ligature."""
+    return "calt_" + ligature_name.rsplit(".", 1)[0]

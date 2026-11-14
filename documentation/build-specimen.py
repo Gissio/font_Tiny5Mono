@@ -22,8 +22,9 @@
 #
 # Tiny5 Code, Tiny5 Mono with ligatures, shares every other specimen with
 # Tiny5 Mono, but has its own editor sample, tiny5code-sample1.jpg, set with
-# its ligatures: its other glyphs are Tiny5 Mono's, and its ligature glyphs
-# are read from its outlines, so no text shaping is needed.
+# its ligatures: its other glyphs are Tiny5 Mono's, its ligature glyphs are
+# read from its outlines, and the text is shaped by bdf2ufo's own calt rules
+# (scripts/bdf2ufo/calt.py), so no text shaper is needed.
 #
 # Besides the build's own requirements, the thermal receipt is path-traced
 # with Mitsuba 3 (pip install mitsuba), and the animation is encoded by
@@ -33,6 +34,7 @@ import math
 import random
 import re
 import subprocess
+import sys
 import tempfile
 from functools import lru_cache
 from pathlib import Path
@@ -52,9 +54,12 @@ MONO_PATH = ROOT_PATH / "fonts/variable/Tiny5Mono[BLED,JITT,ROND,wdth,wght].ttf"
 MONO_ITALIC_PATH = ROOT_PATH / "fonts/variable/Tiny5Mono-Italic[BLED,JITT,ROND,wdth,wght].ttf"
 
 # Tiny5 Code is Tiny5 Mono with ligatures: every other glyph is the same, so
-# only its ligature glyphs are read from it
+# only its ligatures, run pieces and numeric forms are read from it
 CODE_PATH = ROOT_PATH / "fonts/variable/Tiny5Code[BLED,JITT,ROND,wdth,wght].ttf"
-LIGATURE_SUFFIX = ".liga"
+CALT_SUFFIXES = (".liga", ".seq", ".num")
+
+sys.path.insert(0, str(ROOT_PATH))
+from scripts.bdf2ufo.calt import CaltRules  # noqa: E402
 
 # Font version, as the devices display it; keep in sync with the font's
 # version (name ID 5)
@@ -134,28 +139,25 @@ def check_coverage(chars):
 
 @lru_cache(maxsize=None)
 def ligatures():
-    """Return Tiny5 Code's ligatures: a dictionary from each ligature's
-    characters to a mask of its glyph, as many cells wide as it has
-    characters.
+    """Return Tiny5 Code's calt rules, and a dictionary from the names of its
+    ligatures, run pieces and numeric forms to masks of their glyphs, as many
+    cells wide as they span.
 
-    A ligature glyph is named after its characters' glyph names, such as
-    hyphen_greater.liga for "->". It takes the last of their cells, and its
-    drawing reaches back over the others, which the font leaves empty. Its
-    mask is read from the outline, at Regular, by testing the center of every
-    font pixel, so the specimen needs no text shaping.
+    Such a glyph takes the last of its cells, and its drawing reaches back
+    over the others, which the font leaves empty. Its mask is read from the
+    outline, at Regular, by testing the center of every font pixel, and the
+    rules are read from the glyph names, so the specimen needs no text shaping.
     """
     font = TTFont(CODE_PATH)
     glyph_set = font.getGlyphSet()
     characters = {name: chr(code_point) for code_point, name in font.getBestCmap().items()}
+    rules = CaltRules([name for name in font.getGlyphOrder() if name.endswith(CALT_SUFFIXES)],
+                      characters)
 
     masks = {}
-    for name in font.getGlyphOrder():
-        if not name.endswith(LIGATURE_SUFFIX):
-            continue
-        sequence = "".join(characters[part]
-                           for part in name.removesuffix(LIGATURE_SUFFIX).split("_"))
-        reach = (len(sequence) - 1) * CELL_WIDTH
-        mask = Image.new("L", (len(sequence) * CELL_WIDTH, CELL_HEIGHT), 0)
+    for name, cells in rules.cells.items():
+        reach = (cells - 1) * CELL_WIDTH
+        mask = Image.new("L", (cells * CELL_WIDTH, CELL_HEIGHT), 0)
         for row in range(CELL_HEIGHT):
             for col in range(mask.size[0]):
                 center = ((col - reach + 0.5) * PIXEL_WIDTH,
@@ -164,20 +166,9 @@ def ligatures():
                 glyph_set[name].draw(pen)
                 if pen.getResult():
                     mask.putpixel((col, row), 255)
-        masks[sequence] = mask
+        masks[name] = mask
 
-    return masks
-
-
-def ligature_runs(text):
-    """Find the ligatures Tiny5 Code forms in a line of text, as its calt
-    feature does: only where a run of ligature characters is a ligature as
-    a whole, so "->" joins but "->->" or "====" do not. Yields the start of
-    each, and its characters."""
-    characters = "".join(sorted(set("".join(ligatures()))))
-    for match in re.finditer(f"[{re.escape(characters)}]+", text):
-        if match.group() in ligatures():
-            yield match.start(), match.group()
+    return rules, masks
 
 
 # --- The text screen --------------------------------------------------------
@@ -233,18 +224,19 @@ class TextScreen:
         check_coverage({cell[0] for line in self.cells for cell in line})
         img = Image.new("RGB", (self.cols * CELL_WIDTH, self.rows * CELL_HEIGHT))
         for y, line in enumerate(self.cells):
-            runs = []
+            glyphs, masks = [None] * len(line), {}
             if self.ligatures:
-                runs = list(ligature_runs("".join(cell[0] for cell in line)))
-            joined = {start + i for start, sequence in runs for i in range(len(sequence))}
+                rules, masks = ligatures()
+                glyphs = rules.shape("".join(cell[0] for cell in line))
             for x, (char, fg, bg) in enumerate(line):
                 xy = (x * CELL_WIDTH, y * CELL_HEIGHT)
                 img.paste(bg, xy + (xy[0] + CELL_WIDTH, xy[1] + CELL_HEIGHT))
-                if char != " " and x not in joined:
+                if char != " " and glyphs[x] is None:
                     img.paste(fg, xy, glyph_cell(char))
-            for start, sequence in runs:
-                fg = line[start + len(sequence) - 1][1]
-                img.paste(fg, (start * CELL_WIDTH, y * CELL_HEIGHT), ligatures()[sequence])
+            for x, name in enumerate(glyphs):
+                if name in masks:
+                    start = x - rules.cells[name] + 1
+                    img.paste(line[x][1], (start * CELL_WIDTH, y * CELL_HEIGHT), masks[name])
 
         return img
 

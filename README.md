@@ -19,15 +19,17 @@ Tiny5 Mono excels at evoking retro-futurism, constrained-tech nostalgia and clea
 - Embedded systems, firmware and device displays
 - Debug overlays and HUDs in pixel art and lo-fi games
 
-It shares the broad language support of Tiny5, covering **Latin, Greek, Cyrillic and Armenian scripts** across **974 languages**, and adds complete sets of **box-drawing characters and block elements**, plus the sextants and much of **Symbols for Legacy Computing**, and **progress bar and spinner glyphs** (U+EE00–U+EE0B, as in Fira Code), for a total of **4,968 glyphs**. It also has **small caps** for Latin and Cyrillic.
+It shares the broad language support of Tiny5, covering **Latin, Greek, Cyrillic and Armenian scripts** across **974 languages**, and adds complete sets of **box-drawing characters and block elements**, plus the sextants and much of **Symbols for Legacy Computing**, the **Powerline** symbols and their common extras for shell prompts and status lines, and **progress bar and spinner glyphs** (U+EE00–U+EE0B, as in Fira Code), for a total of **4,968 glyphs**. It also has **small caps** for Latin and Cyrillic, and a **slashed zero** (the `zero` feature) as an alternative to the default dotted zero.
 
-**Tiny5 Code** is Tiny5 Mono with **programming ligatures**. It joins 37 common operators, such as `->`, `=>`, `<=`, `!=`, `===`, `|>`, `::`, `>>=`, `..<` and `<!--`, into single shapes that span their cells. Every glyph keeps its cell, so columns stay aligned and the cursor still moves one character at a time. A ligature only forms where the whole operator is the ligature, so `====` or `<==>` stay as typed. Turn on font ligatures in your editor or terminal to use them.
+**Tiny5 Code** is Tiny5 Mono with **programming ligatures**. It joins 77 common operators, such as `<=`, `!=`, `===`, `++`, `??`, `?.`, `::`, `>>`, `|>`, `<*>`, `</>`, `#[` and `<!--`, into single shapes that span their cells, draws **arrows and lines of any length**, such as `->`, `<-->`, `==>`, `<==>`, `|->`, `->-`, `=/=`, `####` and `__`, and sets the `x` of `1920x1080` and `0xFF` as `×` and centers the colon of `10:30`. Every glyph keeps its cell, so columns stay aligned and the cursor still moves one character at a time. A ligature only forms where nothing next to it continues it, so `++` joins in `i++;` but `++++` stays as typed. Turn on font ligatures in your editor or terminal to use them.
 
 For crisp rows of pixels, set the font size to **increments of 6 pt (8 px)**. To make the pixels square, set the Width axis to **143.82**.
 
 Tiny5 Mono is also available in [BDF](https://en.wikipedia.org/wiki/Glyph_Bitmap_Distribution_Format) format for seamless integration with the [mcu-renderer](https://github.com/Gissio/mcu-renderer), [u8g2](https://github.com/olikraus/u8g2) and [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI) libraries.
 
 ![Tiny5 Mono variable axes](documentation/tiny5mono-axes.gif)
+
+![Code editor on a color CRT, Tiny5 Code](documentation/tiny5code-sample1.jpg)
 
 ![Character set on a character LCD, Tiny5 Mono](documentation/tiny5mono-sample2.jpg)
 
@@ -59,9 +61,10 @@ The specimen images and videos in `documentation/` are made by `python documenta
 
 ### 3.002
 
-- Added Tiny5 Code, Tiny5 Mono with 37 programming ligatures.
+- Added Tiny5 Code, Tiny5 Mono with 77 programming ligatures, arrows and lines of any length, and contextual `×` and centered colon between digits.
+- Added a slashed zero, available with the OpenType `zero` feature.
 - Added progress bar and spinner glyphs at U+EE00–U+EE0B, the private use code points Fira Code assigns them.
-- Redrew 237 glyphs, mostly math operators, Miscellaneous Symbols, Dingbats and Symbols for Legacy Computing Supplement, as well as ‰, ‱ and Ꜧ ꜧ.
+- Redrew 239 glyphs, mostly math operators, Miscellaneous Symbols, Dingbats and Symbols for Legacy Computing Supplement, as well as `{` `}`, which are now wider for legibility, U+2030, U+2031, U+A726 and U+A727.
 - Repositioned U+23D2, U+23D4, U+2768 and U+2774.
 
 ### 3.001

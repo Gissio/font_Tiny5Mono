@@ -8,6 +8,7 @@
 # The family name, which replaces the FAMILY_NAME of the .bdf font.
 family_name: "Tiny5 Code"
 
-# Whether to add the ligature glyphs (unencoded glyphs named like
-# "hyphen_greater.liga") and their calt feature.
+# Whether to add the ligatures, run pieces and numeric forms (unencoded glyphs
+# named like "exclam_equal.liga", "hyphen_middle.seq" and "x.num") and their
+# calt feature.
 ligatures: true
