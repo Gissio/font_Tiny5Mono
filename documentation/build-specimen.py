@@ -21,9 +21,10 @@
 # repository: tiny5mono-github.jpg, its social preview image.
 #
 # Tiny5 Code, Tiny5 Mono with ligatures, shares every other specimen with
-# Tiny5 Mono, but has its own editor sample, tiny5code-sample1.jpg, set with
-# its ligatures: its other glyphs are Tiny5 Mono's, its ligature glyphs are
-# read from its outlines, and the text is shaped by bdf2ufo's own calt rules
+# Tiny5 Mono, but has its own code sample, tiny5code-sample1.jpg: a Vim
+# session with Powerline bars, on the editor's tube, set with its ligatures.
+# Its other glyphs are Tiny5 Mono's, its ligature glyphs are read from its
+# outlines, and the text is shaped by bdf2ufo's own calt rules
 # (scripts/bdf2ufo/calt.py), so no text shaper is needed.
 #
 # Besides the build's own requirements, the thermal receipt is path-traced
@@ -520,17 +521,6 @@ ED_SOURCE = [
     "    return 0;",
     "}",
 ]
-
-# Tiny5 Code's source keeps the comment, and has an operator or two on every
-# line after it, so its ligatures show: <= || == // -> !=
-ED_CODE_SOURCE = ED_SOURCE[:6] + [
-    "#include <stdio.h>",
-    "int main(int argc, char **argv) {",
-    "    if (argc <= 1 || argv[1][0] == 0)",
-    "        return 1;  // usage -> stderr",
-    "    return puts(argv[1]) != EOF;",
-    "}",
-]
 ED_CURSOR_LINE = 10             # 0-based: the line being typed
 ED_KEYWORDS = {"int", "void", "char", "const", "unsigned", "static"}
 ED_CONTROLS = {"return", "if", "else", "for", "while"}
@@ -562,12 +552,6 @@ ED_LAYOUTS = {
     "itch": {"canvas": ITCH_SIZE, "rows": 17, "code_col": 6, "name": ["Tiny5", "Mono"], "scale": 2},
     "itch-banner": {"canvas": BANNER_SIZE, "rows": 12, "code_col": 8, "name": ["Tiny5 Mono"],
                     "scale": 2},
-}
-
-# Tiny5 Code's sample, laid out as Tiny5 Mono's, set with its ligatures
-ED_CODE_LAYOUTS = {
-    "sample1": {"canvas": CANVAS, "rows": 14, "code_col": 8, "name": ["Tiny5 Code"], "scale": 1,
-                "code": True},
 }
 
 
@@ -608,17 +592,15 @@ def put_code(s, col, row, line, bg):
 def compose_editor(layout):
     """Compose the editor in a layout."""
     rows, code_col, scale = layout["rows"], layout["code_col"], layout["scale"]
-    code = layout.get("code", False)
     cols = crt_columns(rows, layout["canvas"])
-    s = TextScreen(cols, rows, ED_TEXT, ED_BG, ligatures=code)
+    s = TextScreen(cols, rows, ED_TEXT, ED_BG)
 
     # The source's comment makes room for the name on one line at its
     # smallest, and opens up as many lines more as a larger name needs,
     # keeping a pixel of the name's below it
     name_size = big_bitmap(layout["name"], ED_NAME_PITCH).size
     extra = big_cells((name_size[0] * scale, (name_size[1] + 1) * scale))[1] - 3
-    source = ED_CODE_SOURCE if code else ED_SOURCE
-    source = source[:1] + [" *"] * extra + source[1:]
+    source = ED_SOURCE[:1] + [" *"] * extra + ED_SOURCE[1:]
     cursor_line = ED_CURSOR_LINE + extra
 
     # The tab bar: the file being edited, and one more behind it
@@ -658,14 +640,168 @@ def build_editor():
     """The modern editor, on a color CRT: the tab bar against the top of
     the frame and the status bar against its foot. Its itch.io cover and
     banner, and its GitHub social preview, are laid out anew on their own
-    frames. Tiny5 Code's sample is the editor once more, set with its
-    ligatures."""
+    frames."""
     for name, layout in ED_LAYOUTS.items():
         save_image(render_crt(compose_editor(layout), layout["canvas"]), name,
                    google=layout["canvas"] == CANVAS)
-    for name, layout in ED_CODE_LAYOUTS.items():
-        save_image(render_crt(compose_editor(layout), layout["canvas"]), name,
-                   google=layout["canvas"] == CANVAS, family="tiny5code")
+
+
+# --- Vim with Powerline: Tiny5 Code's sample --------------------------------
+
+# Tiny5 Code's sample is a Vim session, on the editor's tube and at its
+# zoom, in the warm gruvbox theme: the buffer line across the top and the
+# status line along the foot are Powerline bars, their segments parted by
+# the font's own Powerline arrows; the line numbers count from the cursor's
+# line, as with relativenumber; and the command line below shows the mode.
+# The source is Rust, and after the comment it has an operator or two on
+# every line, so the ligatures show: -> ..= => // != <= --
+#
+# gruvbox's grays and pastels are muted; on the tube they are lifted a step
+# or two up its own ramp, so the screen reads as brightly as the editor's
+VIM_BG = (29, 32, 33)           # gruvbox dark, hard
+VIM_BG1 = (80, 73, 69)          # the cursor's line, the bars' fill
+VIM_BG2 = (102, 92, 84)
+VIM_FG = (251, 241, 199)
+VIM_FG4 = (213, 196, 161)
+VIM_DARK = (29, 32, 33)         # text on a bright segment
+VIM_LINE_NR = (168, 153, 132)
+VIM_COMMENT = (189, 174, 147)
+VIM_TITLE = (251, 241, 199)     # the banner's large type, the brightest
+VIM_KEYWORD = (251, 73, 52)
+VIM_FUNCTION = (184, 187, 38)
+VIM_STRING = (184, 187, 38)
+VIM_TYPE = (250, 189, 47)
+VIM_NUMBER = (231, 154, 175)    # numbers and character literals
+VIM_MODE = (151, 190, 175)      # insert mode's segment
+
+VIM_NAME = ["Tiny5 Code"]
+VIM_FILE = "tiny5.rs"
+VIM_SOURCE = ED_SOURCE[:6] + [
+    "fn height(c: char) -> u32 {",
+    "    match c {",
+    "        'A'..='Z' | '0'..='9' => 5,  // caps",
+    "        c if c != ' ' && c <= '~' => 4,",
+    "        _ => 0,",
+    "    }",
+    "}",
+]
+VIM_CURSOR_LINE = 10            # 0-based: the line being typed
+VIM_KEYWORDS = {"fn", "match", "if", "else", "let", "mut", "use", "return", "for", "in"}
+VIM_TYPES = {"char", "u8", "u32", "usize", "i32", "str", "bool", "String", "Self"}
+VIM_NUMBER_WIDTH = 4            # Vim's numberwidth: the gutter, with its gap
+VIM_MARGIN = 1                  # the terminal's padding either side, so the
+                                # tube's curve keeps the text in the frame;
+                                # the bars run on through it
+
+
+def put_rust(s, col, row, line, bg):
+    """Write a line of Rust in gruvbox's colors."""
+    if line.lstrip().startswith(("/*", "*")):
+        s.put(col, row, line, VIM_COMMENT, bg)
+        return
+    code, slashes, comment = line.partition("//")
+    x = col
+    tokens = re.findall(r"'[^']*'|\"[^\"]*\"|\w+|\W", code)
+    for i, token in enumerate(tokens):
+        following = next((t for t in tokens[i + 1:] if t != " "), "")
+        if token.startswith('"'):
+            color = VIM_STRING
+        elif token.startswith("'") or token.isdigit():
+            color = VIM_NUMBER
+        elif token in VIM_KEYWORDS:
+            color = VIM_KEYWORD
+        elif token in VIM_TYPES:
+            color = VIM_TYPE
+        elif token[0].isalpha() and following == "(":
+            color = VIM_FUNCTION
+        else:
+            color = VIM_FG
+        s.put(x, row, token, color, bg)
+        x += len(token)
+    if slashes:
+        s.put(x, row, slashes + comment, VIM_COMMENT, bg)
+
+
+def powerline(s, col, row, segments, fill, right=False):
+    """Draw a run of Powerline segments, each a text in its colors. From
+    the left, an arrow pointing right follows each segment, in its color on
+    the next one's, or on the fill; from the right, an arrow pointing left
+    leads each, in its color on the one before. On the right the run ends
+    at the column given."""
+    if right:
+        col -= sum(len(text) + 1 for text, _, _ in segments)
+    before = fill
+    for i, (text, fg, bg) in enumerate(segments):
+        if right:
+            s.put(col, row, "", bg, before)
+            s.put(col + 1, row, text, fg, bg)
+        else:
+            after = segments[i + 1][2] if i + 1 < len(segments) else fill
+            s.put(col, row, text, fg, bg)
+            s.put(col + len(text), row, "", bg, after)
+        col += len(text) + 1
+        before = bg
+
+
+def compose_vim():
+    """Compose the Vim session: the buffer line, the source in its window,
+    the status line and the command line."""
+    rows = ED_LAYOUTS["sample1"]["rows"]
+    screen_cols = crt_columns(rows, CANVAS)
+    cols = screen_cols - 2 * VIM_MARGIN
+    s = TextScreen(cols, rows, VIM_FG, VIM_BG)
+
+    # The buffer line: the file being edited, modified, and one more
+    s.fill(0, 0, cols, 1, " ", VIM_FG4, VIM_BG1)
+    powerline(s, 0, 0, [(f" {VIM_FILE} + ", VIM_DARK, VIM_MODE),
+                        (" Cargo.toml ", VIM_FG4, VIM_BG2)], VIM_BG1)
+    powerline(s, cols, 0, [(" buffers ", VIM_DARK, VIM_FG4)], VIM_BG1, right=True)
+
+    # The source, each line numbered by its distance from the cursor's, and
+    # the cursor's own line by its number, lit
+    top = 1
+    height = rows - top - 2
+    for i, line in enumerate(VIM_SOURCE[:height]):
+        if VIM_NUMBER_WIDTH + len(line) > cols:
+            line = line.partition("//")[0].rstrip()
+        if i == VIM_CURSOR_LINE:
+            s.fill(0, top + i, cols, 1, " ", VIM_FG, VIM_BG1)
+            s.put(0, top + i, f"{i + 1:<{VIM_NUMBER_WIDTH - 1}}", VIM_TYPE, VIM_BG1)
+            put_rust(s, VIM_NUMBER_WIDTH, top + i, line, VIM_BG1)
+        else:
+            s.put(0, top + i, f"{abs(i - VIM_CURSOR_LINE):{VIM_NUMBER_WIDTH - 1}}", VIM_LINE_NR)
+            put_rust(s, VIM_NUMBER_WIDTH, top + i, line, VIM_BG)
+    s.big_text(VIM_NUMBER_WIDTH + 4, top + 1, VIM_NAME, VIM_TITLE, pitch=ED_NAME_PITCH)
+    cursor_col = len(VIM_SOURCE[VIM_CURSOR_LINE])
+    s.put(VIM_NUMBER_WIDTH + cursor_col, top + VIM_CURSOR_LINE, "▏", VIM_FG, VIM_BG1)
+
+    # The status line: the mode, the branch and the file on the left; the
+    # file type, and the cursor's line and column, on the right
+    status = rows - 2
+    s.fill(0, status, cols, 1, " ", VIM_FG4, VIM_BG1)
+    powerline(s, 0, status, [(" INSERT ", VIM_DARK, VIM_MODE),
+                             ("  main ", VIM_FG, VIM_BG2),
+                             (f" {VIM_FILE}[+] ", VIM_FG4, VIM_BG1)], VIM_BG1)
+    powerline(s, cols, status, [(" rust ", VIM_FG, VIM_BG2),
+                                (f"  {VIM_CURSOR_LINE + 1}:{cursor_col + 1} ",
+                                 VIM_DARK, VIM_MODE)], VIM_BG1, right=True)
+
+    # The command line
+    s.put(0, rows - 1, "-- INSERT --", VIM_FG)
+
+    # The padding takes each row's color at its edge
+    framed = TextScreen(screen_cols, rows, VIM_FG, VIM_BG, ligatures=True)
+    for y, line in enumerate(s.cells):
+        framed.cells[y][VIM_MARGIN:VIM_MARGIN + cols] = line
+        framed.fill(0, y, VIM_MARGIN, 1, " ", bg=line[0][2])
+        framed.fill(VIM_MARGIN + cols, y, VIM_MARGIN, 1, " ", bg=line[-1][2])
+
+    return framed
+
+
+def build_vim():
+    """Tiny5 Code's sample: the Vim session, on the editor's tube."""
+    save_image(render_crt(compose_vim()), "sample1", family="tiny5code")
 
 
 # --- System monitor: the terminal ------------------------------------------
@@ -1716,9 +1852,10 @@ def build_animation():
 if __name__ == "__main__":
     build_animation()                           # the presentation: variation axes, animated
     build_editor()                              # 1: code, modern editor on a color CRT,
-                                                # the itch.io cover and banner, the
-                                                # GitHub social preview, and Tiny5
-                                                # Code's sample, with ligatures
+                                                # the itch.io cover and banner, and the
+                                                # GitHub social preview
+    build_vim()                                 # Tiny5 Code's 1: Vim with Powerline,
+                                                # with ligatures, color CRT
     build_charset()                             # 2: character set, character LCD
     build_ramp()                                # 3: size ramp, thermal receipt
     build_monitor()                             # 4: system monitor, color CRT
