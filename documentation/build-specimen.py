@@ -62,10 +62,6 @@ CALT_SUFFIXES = (".liga", ".seq", ".num")
 sys.path.insert(0, str(ROOT_PATH))
 from scripts.bdf2ufo.calt import CaltRules  # noqa: E402
 
-# Font version, as the devices display it; keep in sync with the font's
-# version (name ID 5)
-VERSION = "V3.001"
-
 # The character cell, in font pixels: 6 across, and 9 down, from the
 # descender line 2 pixels below the baseline to the cap line of accented
 # capitals 7 pixels above it
@@ -1180,7 +1176,7 @@ def compose_receipt(rows):
     # space left over
     rule = (1, "-" * columns(1), False, None, None)
     lines = [(2, "Tiny5 Mono", True, None, None),
-             (1, "Size test " + VERSION, True, None, THERMAL_LABEL_LEAD),
+             (1, "Size test", True, None, THERMAL_LABEL_LEAD),
              rule]
     for scale, count in zip(RAMP_SCALES, RAMP_LINES):
         lines.append((1, f"{scale * 6} pt", False, f"{scale * 8} px", None))
