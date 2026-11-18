@@ -135,37 +135,55 @@ def check_coverage(chars):
 
 
 @lru_cache(maxsize=None)
-def ligatures():
-    """Return Tiny5 Code's calt rules, and a dictionary from the names of its
-    ligatures, run pieces and numeric forms to masks of their glyphs, as many
-    cells wide as they span.
-
-    Such a glyph takes the last of its cells, and its drawing reaches back
-    over the others, which the font leaves empty. Its mask is read from the
-    outline, at Regular, by testing the center of every font pixel, and the
-    rules are read from the glyph names, so the specimen needs no text shaping.
-    """
+def calt_font():
+    """Return Tiny5 Code's calt rules, read from the names of its ligatures,
+    run pieces and numeric forms, so the specimen needs no text shaping, and
+    its glyph set."""
     font = TTFont(CODE_PATH)
-    glyph_set = font.getGlyphSet()
     characters = {name: chr(code_point) for code_point, name in font.getBestCmap().items()}
     rules = CaltRules([name for name in font.getGlyphOrder() if name.endswith(CALT_SUFFIXES)],
                       characters)
 
-    masks = {}
-    for name, cells in rules.cells.items():
-        reach = (cells - 1) * CELL_WIDTH
-        mask = Image.new("L", (cells * CELL_WIDTH, CELL_HEIGHT), 0)
-        for row in range(CELL_HEIGHT):
-            for col in range(mask.size[0]):
-                center = ((col - reach + 0.5) * PIXEL_WIDTH,
-                          (CELL_ASCENT - 1 - row + 0.5) * PIXEL_HEIGHT)
-                pen = PointInsidePen(glyph_set, center)
-                glyph_set[name].draw(pen)
-                if pen.getResult():
-                    mask.putpixel((col, row), 255)
-        masks[name] = mask
+    return rules, font.getGlyphSet()
 
-    return rules, masks
+
+@lru_cache(maxsize=None)
+def ligature_mask(name):
+    """Return the mask of one of Tiny5 Code's ligatures, run pieces or
+    numeric forms, as many cells wide as it spans.
+
+    Such a glyph takes the last of its cells, and its drawing reaches back
+    over the others, which the font leaves empty. Its mask is read from the
+    outline, at Regular, by testing the center of every font pixel; only the
+    glyphs a screen uses are read, as the test is slow."""
+    rules, glyph_set = calt_font()
+    cells = rules.cells[name]
+    reach = (cells - 1) * CELL_WIDTH
+    mask = Image.new("L", (cells * CELL_WIDTH, CELL_HEIGHT), 0)
+    for row in range(CELL_HEIGHT):
+        for col in range(mask.size[0]):
+            center = ((col - reach + 0.5) * PIXEL_WIDTH,
+                      (CELL_ASCENT - 1 - row + 0.5) * PIXEL_HEIGHT)
+            pen = PointInsidePen(glyph_set, center)
+            glyph_set[name].draw(pen)
+            if pen.getResult():
+                mask.putpixel((col, row), 255)
+
+    return mask
+
+
+def text_mask(lines, pitch=CELL_HEIGHT):
+    """Set lines of text as a mask of font pixels, a cell to a character and
+    `pitch` font pixels from one line to the next."""
+    check_coverage({char for line in lines for char in line})
+    height = (len(lines) - 1) * pitch + CELL_HEIGHT
+    mask = Image.new("L", (max(len(line) for line in lines) * CELL_WIDTH, height), 0)
+    for y, line in enumerate(lines):
+        for x, char in enumerate(line):
+            if char != " ":
+                mask.paste(255, (x * CELL_WIDTH, y * pitch), glyph_cell(char))
+
+    return mask
 
 
 # --- The text screen --------------------------------------------------------
@@ -221,21 +239,34 @@ class TextScreen:
         check_coverage({cell[0] for line in self.cells for cell in line})
         img = Image.new("RGB", (self.cols * CELL_WIDTH, self.rows * CELL_HEIGHT))
         for y, line in enumerate(self.cells):
-            glyphs, masks = [None] * len(line), {}
+            glyphs, spans = [None] * len(line), {}
             if self.ligatures:
-                rules, masks = ligatures()
+                rules, _ = calt_font()
                 glyphs = rules.shape("".join(cell[0] for cell in line))
+                spans = rules.cells
             for x, (char, fg, bg) in enumerate(line):
                 xy = (x * CELL_WIDTH, y * CELL_HEIGHT)
                 img.paste(bg, xy + (xy[0] + CELL_WIDTH, xy[1] + CELL_HEIGHT))
                 if char != " " and glyphs[x] is None:
                     img.paste(fg, xy, glyph_cell(char))
             for x, name in enumerate(glyphs):
-                if name in masks:
-                    start = x - rules.cells[name] + 1
-                    img.paste(line[x][1], (start * CELL_WIDTH, y * CELL_HEIGHT), masks[name])
+                if name in spans:
+                    start = x - spans[name] + 1
+                    img.paste(line[x][1], (start * CELL_WIDTH, y * CELL_HEIGHT),
+                              ligature_mask(name))
 
         return img
+
+
+def pad_screen(s, margin):
+    """Return the screen with `margin` blank columns either side, each row's
+    padding in the colors of its edge, as a terminal's padding takes them."""
+    padded = TextScreen(s.cols + 2 * margin, s.rows, None, None, s.ligatures)
+    for y, line in enumerate(s.cells):
+        padded.cells[y] = ([[" ", *line[0][1:]] for _ in range(margin)] + line
+                           + [[" ", *line[-1][1:]] for _ in range(margin)])
+
+    return padded
 
 
 def big_bitmap(lines, pitch=CELL_HEIGHT):
@@ -243,15 +274,11 @@ def big_bitmap(lines, pitch=CELL_HEIGHT):
     from one line to the next, its last column, the gap after the last
     character, trimmed off, and below the last line whatever its glyphs
     leave blank."""
-    height = (len(lines) - 1) * pitch + CELL_HEIGHT
-    img = Image.new("L", (max(len(line) for line in lines) * CELL_WIDTH, height), 0)
-    for y, line in enumerate(lines):
-        for x, char in enumerate(line):
-            img.paste(255, (x * CELL_WIDTH, y * pitch), glyph_cell(char))
-    last = height - CELL_HEIGHT + max(glyph_cell(char).getbbox()[3]
-                                      for char in lines[-1] if glyph_cell(char).getbbox())
+    img = text_mask(lines, pitch)
+    last = img.height - CELL_HEIGHT + max(glyph_cell(char).getbbox()[3]
+                                          for char in lines[-1] if glyph_cell(char).getbbox())
 
-    return img.crop((0, 0, img.size[0] - 1, last))
+    return img.crop((0, 0, img.width - 1, last))
 
 
 def big_cells(size):
@@ -361,6 +388,7 @@ CRT_CROP = 0                    # scanlines cut off the top and the foot,
                                 # besides what the tube's curve takes
 CRT_BULGE = 0.02                # a gentle curve, its center right of the
 CRT_BULGE_CENTER = (0.62, 0.5)  # middle, as the camera stands to the right
+CRT_ROWS = 14                   # the samples' screens, in rows of text
 
 # Electron beam: a generalized Gaussian across the scanline, whose width
 # grows with beam current, so bright lines bloom wider than dim ones
@@ -414,10 +442,11 @@ def barrel(img, k, center=(0.5, 0.5)):
     return img.transform(img.size, Image.MESH, mesh, Image.BILINEAR)
 
 
-def crt_beam(screen_img, size, offset):
+def crt_beam(screen_img, size):
     """Scan a font-pixel image onto a tube face of the given size: one
     scanline per row of font pixels, each font pixel PIXEL_ASPECT as wide as
-    the scanline pitch, the raster's top left at the offset given.
+    the scanline pitch, the raster centered across the face and its top
+    CRT_CROP scanlines above the face's.
 
     Returns the beam intensity image, in RGB, before any phosphor.
     """
@@ -436,13 +465,12 @@ def crt_beam(screen_img, size, offset):
 
     # Beam current modulates the scanline width: bright lines run wide,
     # dim ones stay narrow
-    lit = raster.convert("L")
-    narrow = ImageChops.multiply(raster, beam_profile(raster.size, pitch, BEAM_SIGMA_MIN).convert("RGB"))
-    wide = ImageChops.multiply(raster, beam_profile(raster.size, pitch, BEAM_SIGMA_MAX).convert("RGB"))
-    beam = Image.composite(wide, narrow, lit)
+    narrow = shade(raster, beam_profile(raster.size, pitch, BEAM_SIGMA_MIN))
+    wide = shade(raster, beam_profile(raster.size, pitch, BEAM_SIGMA_MAX))
+    beam = Image.composite(wide, narrow, raster.convert("L"))
 
     face = Image.new("RGB", size)
-    face.paste(beam, offset)
+    face.paste(beam, ((size[0] - width) // 2, -CRT_CROP * pitch))
 
     return face
 
@@ -461,17 +489,12 @@ def render_crt(screen, canvas_size=CANVAS):
     vignettes it. The finished face is then resampled to the canvas."""
     rng = random.Random(NOISE_SEED)
     img = screen.render().point(lambda v: min(255, round(v * CRT_GAIN)))
-    width = round(img.size[0] * CRT_SCANLINE * PIXEL_ASPECT)
-    height = img.size[1] * CRT_SCANLINE
-    face_height = height - 2 * CRT_CROP * CRT_SCANLINE
-    face = (round(face_height * canvas_size[0] / canvas_size[1]), face_height)
-    beam = crt_beam(img, face, ((face[0] - width) // 2, -CRT_CROP * CRT_SCANLINE))
+    face_height = (img.height - 2 * CRT_CROP) * CRT_SCANLINE
+    beam = crt_beam(img, (round(face_height * canvas_size[0] / canvas_size[1]), face_height))
 
-    img = beam
     halo = beam.filter(ImageFilter.GaussianBlur(CRT_SCANLINE * 0.9)).point(lambda v: v * 50 // 100)
-    img = ImageChops.screen(img, halo)
     haze = beam.filter(ImageFilter.GaussianBlur(CRT_SCANLINE * 3.0)).point(lambda v: v * 22 // 100)
-    img = ImageChops.screen(img, haze)
+    img = ImageChops.screen(ImageChops.screen(beam, halo), haze)
 
     img = shade(img, grain_field(img.size, rng, CRT_GRAIN))
     img = barrel(img, CRT_BULGE, CRT_BULGE_CENTER)
@@ -543,46 +566,58 @@ GITHUB_SIZE = (1280, 640)
 # wider, shows the whole program as the sample does. A line's trailing
 # comment is left out where it would run off the screen
 ED_LAYOUTS = {
-    "sample1": {"canvas": CANVAS, "rows": 14, "code_col": 8, "name": ["Tiny5 Mono"], "scale": 1},
-    "github": {"canvas": GITHUB_SIZE, "rows": 14, "code_col": 8, "name": ["Tiny5 Mono"], "scale": 1},
+    "sample1": {"canvas": CANVAS, "rows": CRT_ROWS, "code_col": 8, "name": ["Tiny5 Mono"],
+                "scale": 1},
+    "github": {"canvas": GITHUB_SIZE, "rows": CRT_ROWS, "code_col": 8, "name": ["Tiny5 Mono"],
+               "scale": 1},
     "itch": {"canvas": ITCH_SIZE, "rows": 17, "code_col": 6, "name": ["Tiny5", "Mono"], "scale": 2},
     "itch-banner": {"canvas": BANNER_SIZE, "rows": 12, "code_col": 8, "name": ["Tiny5 Mono"],
                     "scale": 2},
 }
 
 
+def put_source(s, col, row, line, bg, tokens, color_of, comment):
+    """Write a line of source code highlighted: a line of a block comment
+    and a line's trailing comment in the comment color, and every other
+    token, as the `tokens` pattern finds them, in the color `color_of` gives
+    it from the token and the next one that is not a space."""
+    if line.lstrip().startswith(("/*", "*")):
+        s.put(col, row, line, comment, bg)
+        return
+    code, slashes, rest = line.partition("//")
+    found = re.findall(tokens, code)
+    for i, token in enumerate(found):
+        following = next((t for t in found[i + 1:] if t != " "), "")
+        s.put(col, row, token, color_of(token, following), bg)
+        col += len(token)
+    if slashes:
+        s.put(col, row, slashes + rest, comment, bg)
+
+
+def c_color(token, following):
+    """Return a C token's color in the dark theme."""
+    if token.startswith('"'):
+        return ED_STRING
+    if token in ED_KEYWORDS:
+        return ED_KEYWORD
+    if token in ED_CONTROLS:
+        return ED_CONTROL
+    if token.isdigit():
+        return ED_NUMBER
+    if token[0].isalpha() and following == "(":
+        return ED_FUNCTION
+
+    return ED_TEXT
+
+
 def put_code(s, col, row, line, bg):
     """Write a line of C in the dark theme's colors."""
-    stripped = line.lstrip()
-    if stripped.startswith(("/*", "*")):
-        s.put(col, row, line, ED_COMMENT, bg)
-        return
-    if stripped.startswith("#"):
+    if line.lstrip().startswith("#"):
         directive, _, rest = line.partition(" ")
         s.put(col, row, directive, ED_CONTROL, bg)
         s.put(col + len(directive) + 1, row, rest, ED_STRING, bg)
         return
-    code, slashes, comment = line.partition("//")
-    x = col
-    tokens = re.findall(r'"[^"]*"|\w+|\W', code)
-    for i, token in enumerate(tokens):
-        following = next((t for t in tokens[i + 1:] if t != " "), "")
-        if token.startswith('"'):
-            color = ED_STRING
-        elif token in ED_KEYWORDS:
-            color = ED_KEYWORD
-        elif token in ED_CONTROLS:
-            color = ED_CONTROL
-        elif token.isdigit():
-            color = ED_NUMBER
-        elif token[0].isalpha() and following == "(":
-            color = ED_FUNCTION
-        else:
-            color = ED_TEXT
-        s.put(x, row, token, color, bg)
-        x += len(token)
-    if slashes:
-        s.put(x, row, slashes + comment, ED_COMMENT, bg)
+    put_source(s, col, row, line, bg, r'"[^"]*"|\w+|\W', c_color, ED_COMMENT)
 
 
 def compose_editor(layout):
@@ -645,34 +680,37 @@ def build_editor():
 # --- Vim with Powerline: Tiny5 Code's sample --------------------------------
 
 # Tiny5 Code's sample is a Vim session, on the editor's tube and at its
-# zoom, in the warm gruvbox theme: the buffer line across the top and the
+# zoom, in a dark theme of its own: the buffer line across the top and the
 # status line along the foot are Powerline bars, their segments parted by
 # the font's own Powerline arrows; the line numbers count from the cursor's
 # line, as with relativenumber; and the command line below shows the mode.
-# The source is Rust, and after the comment it has an operator or two on
-# every line, so the ligatures show: -> ..= => // != <= --
+# It is a specimen, not a title: the font is named only in the file's doc
+# comment. The source is Rust, with an operator or two on most lines, so
+# the ligatures show: -> ..= => // != <= --
 #
-# gruvbox's grays and pastels are muted; on the tube they are lifted a step
-# or two up its own ramp, so the screen reads as brightly as the editor's
-VIM_BG = (29, 32, 33)           # gruvbox dark, hard
-VIM_BG1 = (80, 73, 69)          # the cursor's line, the bars' fill
-VIM_BG2 = (102, 92, 84)
-VIM_FG = (251, 241, 199)
-VIM_FG4 = (213, 196, 161)
-VIM_DARK = (29, 32, 33)         # text on a bright segment
-VIM_LINE_NR = (168, 153, 132)
-VIM_COMMENT = (189, 174, 147)
-VIM_TITLE = (251, 241, 199)     # the banner's large type, the brightest
-VIM_KEYWORD = (251, 73, 52)
-VIM_FUNCTION = (184, 187, 38)
-VIM_STRING = (184, 187, 38)
-VIM_TYPE = (250, 189, 47)
-VIM_NUMBER = (231, 154, 175)    # numbers and character literals
-VIM_MODE = (151, 190, 175)      # insert mode's segment
+# The theme sets saturated colors, near pure hues, on a cool gray that is
+# dark but not black: the tube's glow softens every color, so only strong
+# ones keep their hue on it, and the grays stay neutral beside them
+VIM_BG = (21, 23, 26)           # cool near-black
+VIM_LINE = (37, 40, 45)         # the cursor's line
+VIM_BAR = (29, 32, 36)          # the bars' fill
+VIM_BG2 = (55, 59, 66)          # the bars' second segments
+VIM_FG = (226, 231, 236)
+VIM_BRIGHT = (255, 128, 0)      # the cursor's line number
+VIM_DARK = (21, 23, 26)         # text on a bright segment
+VIM_LINE_NR = (100, 107, 116)
+VIM_COMMENT = (130, 138, 148)
+VIM_KEYWORD = (255, 128, 0)     # orange
+VIM_FUNCTION = (0, 153, 255)    # azure
+VIM_STRING = (102, 221, 0)      # lime: strings and character literals
+VIM_TYPE = (255, 204, 0)        # gold
+VIM_NUMBER = (255, 51, 102)     # rose
+VIM_MODE = (0, 153, 255)        # insert mode's segment, azure
 
-VIM_NAME = ["Tiny5 Code"]
 VIM_FILE = "tiny5.rs"
-VIM_SOURCE = ED_SOURCE[:6] + [
+VIM_SOURCE = [
+    "//! Tiny5 Code, a 5-pixel font",
+    "",
     "fn height(c: char) -> u32 {",
     "    match c {",
     "        'A'..='Z' | '0'..='9' => 5,  // caps",
@@ -680,8 +718,10 @@ VIM_SOURCE = ED_SOURCE[:6] + [
     "        _ => 0,",
     "    }",
     "}",
+    "",
+    "fn width(s: &str) -> usize { s.len() * 6 }",
 ]
-VIM_CURSOR_LINE = 10            # 0-based: the line being typed
+VIM_CURSOR_LINE = 6             # 0-based: the line being typed
 VIM_KEYWORDS = {"fn", "match", "if", "else", "let", "mut", "use", "return", "for", "in"}
 VIM_TYPES = {"char", "u8", "u32", "usize", "i32", "str", "bool", "String", "Self"}
 VIM_NUMBER_WIDTH = 4            # Vim's numberwidth: the gutter, with its gap
@@ -690,32 +730,25 @@ VIM_MARGIN = 1                  # the terminal's padding either side, so the
                                 # the bars run on through it
 
 
+def rust_color(token, following):
+    """Return a Rust token's color in the theme."""
+    if token.startswith(('"', "'")):
+        return VIM_STRING
+    if token.isdigit():
+        return VIM_NUMBER
+    if token in VIM_KEYWORDS:
+        return VIM_KEYWORD
+    if token in VIM_TYPES:
+        return VIM_TYPE
+    if token[0].isalpha() and following == "(":
+        return VIM_FUNCTION
+
+    return VIM_FG
+
+
 def put_rust(s, col, row, line, bg):
-    """Write a line of Rust in gruvbox's colors."""
-    if line.lstrip().startswith(("/*", "*")):
-        s.put(col, row, line, VIM_COMMENT, bg)
-        return
-    code, slashes, comment = line.partition("//")
-    x = col
-    tokens = re.findall(r"'[^']*'|\"[^\"]*\"|\w+|\W", code)
-    for i, token in enumerate(tokens):
-        following = next((t for t in tokens[i + 1:] if t != " "), "")
-        if token.startswith('"'):
-            color = VIM_STRING
-        elif token.startswith("'") or token.isdigit():
-            color = VIM_NUMBER
-        elif token in VIM_KEYWORDS:
-            color = VIM_KEYWORD
-        elif token in VIM_TYPES:
-            color = VIM_TYPE
-        elif token[0].isalpha() and following == "(":
-            color = VIM_FUNCTION
-        else:
-            color = VIM_FG
-        s.put(x, row, token, color, bg)
-        x += len(token)
-    if slashes:
-        s.put(x, row, slashes + comment, VIM_COMMENT, bg)
+    """Write a line of Rust in the theme's colors."""
+    put_source(s, col, row, line, bg, r"'[^']*'|\"[^\"]*\"|\w+|\W", rust_color, VIM_COMMENT)
 
 
 def powerline(s, col, row, segments, fill, right=False):
@@ -742,16 +775,15 @@ def powerline(s, col, row, segments, fill, right=False):
 def compose_vim():
     """Compose the Vim session: the buffer line, the source in its window,
     the status line and the command line."""
-    rows = ED_LAYOUTS["sample1"]["rows"]
-    screen_cols = crt_columns(rows, CANVAS)
-    cols = screen_cols - 2 * VIM_MARGIN
-    s = TextScreen(cols, rows, VIM_FG, VIM_BG)
+    rows = CRT_ROWS
+    cols = crt_columns(rows, CANVAS) - 2 * VIM_MARGIN
+    s = TextScreen(cols, rows, VIM_FG, VIM_BG, ligatures=True)
 
     # The buffer line: the file being edited, modified, and one more
-    s.fill(0, 0, cols, 1, " ", VIM_FG4, VIM_BG1)
+    s.fill(0, 0, cols, 1, " ", VIM_FG, VIM_BAR)
     powerline(s, 0, 0, [(f" {VIM_FILE} + ", VIM_DARK, VIM_MODE),
-                        (" Cargo.toml ", VIM_FG4, VIM_BG2)], VIM_BG1)
-    powerline(s, cols, 0, [(" buffers ", VIM_DARK, VIM_FG4)], VIM_BG1, right=True)
+                        (" Cargo.toml ", VIM_FG, VIM_BG2)], VIM_BAR)
+    powerline(s, cols, 0, [(" buffers ", VIM_DARK, VIM_FG)], VIM_BAR, right=True)
 
     # The source, each line numbered by its distance from the cursor's, and
     # the cursor's own line by its number, lit
@@ -761,38 +793,31 @@ def compose_vim():
         if VIM_NUMBER_WIDTH + len(line) > cols:
             line = line.partition("//")[0].rstrip()
         if i == VIM_CURSOR_LINE:
-            s.fill(0, top + i, cols, 1, " ", VIM_FG, VIM_BG1)
-            s.put(0, top + i, f"{i + 1:<{VIM_NUMBER_WIDTH - 1}}", VIM_TYPE, VIM_BG1)
-            put_rust(s, VIM_NUMBER_WIDTH, top + i, line, VIM_BG1)
+            bg = VIM_LINE
+            s.fill(0, top + i, cols, 1, " ", VIM_FG, bg)
+            s.put(0, top + i, f"{i + 1:<{VIM_NUMBER_WIDTH - 1}}", VIM_BRIGHT, bg)
         else:
+            bg = VIM_BG
             s.put(0, top + i, f"{abs(i - VIM_CURSOR_LINE):{VIM_NUMBER_WIDTH - 1}}", VIM_LINE_NR)
-            put_rust(s, VIM_NUMBER_WIDTH, top + i, line, VIM_BG)
-    s.big_text(VIM_NUMBER_WIDTH + 4, top + 1, VIM_NAME, VIM_TITLE, pitch=ED_NAME_PITCH)
+        put_rust(s, VIM_NUMBER_WIDTH, top + i, line, bg)
     cursor_col = len(VIM_SOURCE[VIM_CURSOR_LINE])
-    s.put(VIM_NUMBER_WIDTH + cursor_col, top + VIM_CURSOR_LINE, "▏", VIM_FG, VIM_BG1)
+    s.put(VIM_NUMBER_WIDTH + cursor_col, top + VIM_CURSOR_LINE, "▏", VIM_FG, VIM_LINE)
 
     # The status line: the mode, the branch and the file on the left; the
     # file type, and the cursor's line and column, on the right
     status = rows - 2
-    s.fill(0, status, cols, 1, " ", VIM_FG4, VIM_BG1)
+    s.fill(0, status, cols, 1, " ", VIM_FG, VIM_BAR)
     powerline(s, 0, status, [(" INSERT ", VIM_DARK, VIM_MODE),
                              ("  main ", VIM_FG, VIM_BG2),
-                             (f" {VIM_FILE}[+] ", VIM_FG4, VIM_BG1)], VIM_BG1)
+                             (f" {VIM_FILE}[+] ", VIM_FG, VIM_BAR)], VIM_BAR)
     powerline(s, cols, status, [(" rust ", VIM_FG, VIM_BG2),
                                 (f"  {VIM_CURSOR_LINE + 1}:{cursor_col + 1} ",
-                                 VIM_DARK, VIM_MODE)], VIM_BG1, right=True)
+                                 VIM_DARK, VIM_MODE)], VIM_BAR, right=True)
 
     # The command line
     s.put(0, rows - 1, "-- INSERT --", VIM_FG)
 
-    # The padding takes each row's color at its edge
-    framed = TextScreen(screen_cols, rows, VIM_FG, VIM_BG, ligatures=True)
-    for y, line in enumerate(s.cells):
-        framed.cells[y][VIM_MARGIN:VIM_MARGIN + cols] = line
-        framed.fill(0, y, VIM_MARGIN, 1, " ", bg=line[0][2])
-        framed.fill(VIM_MARGIN + cols, y, VIM_MARGIN, 1, " ", bg=line[-1][2])
-
-    return framed
+    return pad_screen(s, VIM_MARGIN)
 
 
 def build_vim():
@@ -827,6 +852,13 @@ TUI_MARGIN = 1                  # blank columns either side, so the tube's
                                 # curve keeps the boxes' sides in the frame
 
 
+def put_tab(s, col, row, text, color, text_color, bg):
+    """Set a text into a box's edge, between tees in the box's color."""
+    s.put(col, row, "┤", color, bg)
+    s.put(col + 1, row, text, text_color, bg)
+    s.put(col + 1 + len(text), row, "├", color, bg)
+
+
 def rounded_box(s, col, row, width, height, title, color, bg):
     """Draw a box with rounded corners, its title set into the top edge."""
     s.put(col, row, "╭" + "─" * (width - 2) + "╮", color, bg)
@@ -834,9 +866,7 @@ def rounded_box(s, col, row, width, height, title, color, bg):
         s.put(col, y, "│", color, bg)
         s.put(col + width - 1, y, "│", color, bg)
     s.put(col, row + height - 1, "╰" + "─" * (width - 2) + "╯", color, bg)
-    s.put(col + 2, row, "┤", color, bg)
-    s.put(col + 3, row, title, ED_TEXT, bg)
-    s.put(col + 3 + len(title), row, "├", color, bg)
+    put_tab(s, col + 2, row, title, color, ED_TEXT, bg)
 
 
 def load_color(level):
@@ -886,18 +916,15 @@ def compose_monitor():
     """Compose the monitor: the processor box across the top, the memory
     and the process boxes side by side below it, inset from the screen's
     sides."""
-    rows = ED_LAYOUTS["sample1"]["rows"]
-    screen_cols = crt_columns(rows, CANVAS)
-    cols = screen_cols - 2 * TUI_MARGIN
+    rows = CRT_ROWS
+    cols = crt_columns(rows, CANVAS) - 2 * TUI_MARGIN
     bg = ED_BG
     s = TextScreen(cols, rows, ED_TEXT, bg)
     rng = random.Random(NOISE_SEED)
 
     # The processor: the graph, and a meter per core
     rounded_box(s, 0, 0, cols, 6, "cpu", TUI_CPU_BOX, bg)
-    s.put(cols - 12, 0, "┤", TUI_CPU_BOX, bg)
-    s.put(cols - 11, 0, "3.20 GHz", ED_MUTED, bg)
-    s.put(cols - 3, 0, "├", TUI_CPU_BOX, bg)
+    put_tab(s, cols - 12, 0, "3.20 GHz", TUI_CPU_BOX, ED_MUTED, bg)
     graph_width = cols - 23
     load_graph(s, 2, 1, graph_width, 4, load_history(graph_width * 2, rng), bg)
     for i, level in enumerate(TUI_CORES):
@@ -929,15 +956,9 @@ def compose_monitor():
 
     # Key hints, set into the foot of the boxes
     for x, hint, color in [(2, "q quit", TUI_MEM_BOX), (half + 2, "↑↓ select", TUI_PROC_BOX)]:
-        s.put(x, rows - 1, "┤", color, bg)
-        s.put(x + 1, rows - 1, hint, ED_MUTED, bg)
-        s.put(x + 1 + len(hint), rows - 1, "├", color, bg)
+        put_tab(s, x, rows - 1, hint, color, ED_MUTED, bg)
 
-    framed = TextScreen(screen_cols, rows, ED_TEXT, bg)
-    for y, line in enumerate(s.cells):
-        framed.cells[y][TUI_MARGIN:TUI_MARGIN + cols] = line
-
-    return framed
+    return pad_screen(s, TUI_MARGIN)
 
 
 def build_monitor():
@@ -1139,10 +1160,8 @@ def thermal_text(grid, x, cap_line, scale, text):
     of its capitals, in dots."""
     across, down = THERMAL_PIXEL[0] * scale, THERMAL_PIXEL[1] * scale
     top = cap_line - (CELL_ASCENT - CAP_PIXELS) * down
-    for i, char in enumerate(text):
-        if char != " ":
-            cell = glyph_cell(char).resize((CELL_WIDTH * across, CELL_HEIGHT * down), Image.NEAREST)
-            grid.paste(255, (x + i * CELL_WIDTH * across, top), cell)
+    mask = text_mask([text])
+    grid.paste(255, (x, top), mask.resize((mask.width * across, mask.height * down), Image.NEAREST))
 
 
 def wrap_words(text, columns):
@@ -1565,20 +1584,6 @@ def compose_report():
             + rows + ["═" * width, total])
 
 
-def compose_printout(lines):
-    """Return the mask of the dots to strike for some lines of text, one per
-    font pixel."""
-    check_coverage({char for line in lines for char in line})
-    width = max(len(line) for line in lines)
-    mask = Image.new("L", (width * CELL_WIDTH, len(lines) * CELL_HEIGHT), 0)
-    for row, line in enumerate(lines):
-        for col, char in enumerate(line):
-            if char != " ":
-                mask.paste(glyph_cell(char), (col * CELL_WIDTH, row * CELL_HEIGHT))
-
-    return mask
-
-
 def form_paper(size, pitch, top, rng):
     """Draw continuous form paper: green bars two print lines tall, from the
     printout's first line on, the perforated tractor margin with its
@@ -1610,10 +1615,10 @@ def form_paper(size, pitch, top, rng):
 
 
 def strike_printout(mask, canvas_size, rng):
-    """Strike every dot of a printout onto the paper, each slightly off in
-    place, size and ink. The ribbon inks in patches, worn pins strike
-    faintly, the head lands slightly off between passes, and the paper
-    feeds in a little askew."""
+    """Strike every dot of a printout's mask, one dot to a font pixel, onto
+    the paper, each slightly off in place, size and ink. The ribbon inks in
+    patches, worn pins strike faintly, the head lands slightly off between
+    passes, and the paper feeds in a little askew."""
     pitch_y = canvas_size[1] / (mask.height + 2 * MATRIX_MARGIN)
     pitch_x = pitch_y * PIXEL_ASPECT
     top = MATRIX_MARGIN * pitch_y
@@ -1653,7 +1658,7 @@ def strike_printout(mask, canvas_size, rng):
 def build_report():
     """The report, off a 9-pin printer."""
     rng = random.Random(NOISE_SEED)
-    save_image(strike_printout(compose_printout(compose_report()), CANVAS, rng), "sample5")
+    save_image(strike_printout(text_mask(compose_report()), CANVAS, rng), "sample5")
 
 
 # --- Variation axes: the animation -----------------------------------------
@@ -1728,16 +1733,13 @@ def anim_state(time):
         # Smootherstep: speed and acceleration both start and end at zero
         return t * t * t * (t * (6 * t - 15) + 10)
 
-    state = dict(ANIM_REGULAR)
     time %= len(ANIM_TIMELINE) * ANIM_SEGMENT
     segment, t = divmod(time / ANIM_SEGMENT, 1)
-    for keys in ANIM_TIMELINE[:int(segment)]:
-        for key in keys:
-            state = dict(state, **key)
     keys = ANIM_TIMELINE[int(segment)]
     step, t = divmod(t * len(keys), 1)
-    for key in keys[:int(step)]:
-        state = dict(state, **key)
+    state = dict(ANIM_REGULAR)
+    for key in [key for done in ANIM_TIMELINE[:int(segment)] for key in done] + keys[:int(step)]:
+        state.update(key)
     after = dict(state, **keys[int(step)])
     e = ease(t)
 
@@ -1790,39 +1792,42 @@ def anim_frame(state, cursor, layout, height):
     return img
 
 
-def render_animation(name, layout, height, fps, encoder):
-    """Render the animation frame by frame straight into ffmpeg, to
-    tiny5mono-<name>, with the encoder's arguments."""
+def anim_image(time, cursor, layout, height):
+    """Draw the animation at a time, the cursor on or off, in a layout, at a
+    height. It is drawn at a whole multiple of its size and reduced, so the
+    type moves smoothly between pixels rather than hopping from one to the
+    next, and its font pixels stay crisp."""
+    over = max(1, ANIM_SUPER_LINES // height)
+    frame = anim_frame(anim_state(time), cursor, ANIM_LAYOUTS[layout], height * over)
+
+    return frame.reduce(over)
+
+
+def render_animation(layout, height, fps, outputs):
+    """Render the animation frame by frame straight into ffmpeg, once for
+    all the outputs, each a name, tiny5mono-<name>, and its encoder's
+    arguments."""
     check_coverage(set("".join(ANIM_TITLE) + ANIM_SUBTITLE + "█"))
     width = round(ANIM_LAYOUTS[layout]["width"] * height / 1080)
     length = len(ANIM_TIMELINE) * ANIM_SEGMENT
-    # Each frame is drawn at a whole multiple of its size and reduced, so
-    # the type moves smoothly between pixels rather than hopping from one
-    # to the next, and its font pixels stay crisp
-    over = max(1, ANIM_SUPER_LINES // height)
-    ffmpeg = subprocess.Popen(
-        ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
-         "-s", f"{width}x{height}", "-r", str(fps), "-i", "-", *encoder,
-         str(OUT_PATH / f"tiny5mono-{name}")],
-        stdin=subprocess.PIPE)
+    encoders = {
+        name: subprocess.Popen(
+            ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
+             "-s", f"{width}x{height}", "-r", str(fps), "-i", "-", *encoder,
+             str(OUT_PATH / f"tiny5mono-{name}")],
+            stdin=subprocess.PIPE)
+        for name, encoder in outputs.items()}
     for i in range(round(length * fps)):
         time = i / fps
         cursor = time % ANIM_CURSOR_BLINK < ANIM_CURSOR_BLINK / 2
-        frame = anim_frame(anim_state(time), cursor, ANIM_LAYOUTS[layout], height * over)
-        frame = frame.reduce(over)
-        ffmpeg.stdin.write(frame.tobytes())
-    ffmpeg.stdin.close()
-    if ffmpeg.wait():
-        raise RuntimeError(f"ffmpeg failed on tiny5mono-{name}")
-
-
-def anim_still(layout, height):
-    """Draw the still: the poster's moment, the cursor on, drawn over size
-    and reduced as the frames are."""
-    over = max(1, ANIM_SUPER_LINES // height)
-    frame = anim_frame(anim_state(ANIM_POSTER), True, ANIM_LAYOUTS[layout], height * over)
-
-    return frame.reduce(over)
+        frame = anim_image(time, cursor, layout, height).tobytes()
+        for ffmpeg in encoders.values():
+            ffmpeg.stdin.write(frame)
+    for ffmpeg in encoders.values():
+        ffmpeg.stdin.close()
+    failed = [name for name, ffmpeg in encoders.items() if ffmpeg.wait()]
+    if failed:
+        raise RuntimeError("ffmpeg failed on " + ", ".join(f"tiny5mono-{name}" for name in failed))
 
 
 H264 = ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "slow", "-movflags", "+faststart"]
@@ -1833,16 +1838,15 @@ def build_animation():
     only an image goes, the round pixels held; for the Google Fonts article
     an MP4 of at most 1.4 MB at its image size; a WebM and a GIF for the
     web, and a square cut for social media."""
-    save_image(anim_still("wide", CANVAS[1]), "presentation", google=False)
-    render_animation("presentation.mp4", "wide", 1080, 30, [*H264, "-crf", "22"])
-    render_animation("presentation-google.mp4", "wide", GOOGLE_SIZE[1], 30,
-                     [*H264, "-crf", "22"])
-    render_animation("axes.webm", "wide", 1080, 30,
-                     ["-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "34", "-row-mt", "1"])
-    render_animation("axes.gif", "wide", 540, 15,
-                     ["-vf", "split[a][b];[a]palettegen=max_colors=64:stats_mode=full[p];"
-                             "[b][p]paletteuse=dither=none"])
-    render_animation("axes-square.mp4", "square", 1080, 30, [*H264, "-crf", "21"])
+    save_image(anim_image(ANIM_POSTER, True, "wide", CANVAS[1]), "presentation", google=False)
+    render_animation("wide", 1080, 30, {
+        "presentation.mp4": [*H264, "-crf", "22"],
+        "axes.webm": ["-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "34", "-row-mt", "1"]})
+    render_animation("wide", GOOGLE_SIZE[1], 30, {"presentation-google.mp4": [*H264, "-crf", "22"]})
+    render_animation("wide", 540, 15, {
+        "axes.gif": ["-vf", "split[a][b];[a]palettegen=max_colors=64:stats_mode=full[p];"
+                            "[b][p]paletteuse=dither=none"]})
+    render_animation("square", 1080, 30, {"axes-square.mp4": [*H264, "-crf", "21"]})
 
 
 if __name__ == "__main__":
